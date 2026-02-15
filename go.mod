@@ -3,7 +3,7 @@ module shizumusic
 go 1.21
 
 require (
-	github.com/amarnathcjd/gogram v1.1.11
+	github.com/amarnathcjd/gogram v1.7.2
 	github.com/joho/godotenv v1.5.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v3 v3.23.12
