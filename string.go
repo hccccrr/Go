@@ -4,94 +4,52 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎵 ShizuMusic - Complete Session Generator
-// Supports: Gogram (Go), Telethon (Python), Pyrogram (Python)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 func main() {
 	printHeader()
-	choice := showMenu()
-	
-	switch choice {
-	case "1":
-		generateGogramSession()
-	case "2":
-		generateTelethonSession()
-	case "3":
-		generatePyrogramSession()
-	default:
-		fmt.Println("❌ Invalid choice!")
-		os.Exit(1)
-	}
+	generateSession()
 }
 
 func printHeader() {
 	fmt.Println()
 	fmt.Println("╭─────────────────────────────────────╮")
-	fmt.Println("│  🎵 ShizuMusic Session Generator    │")
+	fmt.Println("│  🎵 Gogram String Session Generator │")
 	fmt.Println("│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │")
-	fmt.Println("│  Supports All 3 Methods! ⭐         │")
+	fmt.Println("│  Fast • Secure • Native Go ⚡       │")
 	fmt.Println("╰─────────────────────────────────────╯")
 	fmt.Println()
 }
 
-func showMenu() string {
-	fmt.Println("📱 Choose Session Generation Method:")
-	fmt.Println()
-	fmt.Println("  1️⃣  Gogram (Native Go) ⭐ Recommended")
-	fmt.Println("      • Pure Go, no dependencies")
-	fmt.Println("      • Fast and secure")
-	fmt.Println("      • Best performance")
-	fmt.Println()
-	fmt.Println("  2️⃣  Telethon (Python)")
-	fmt.Println("      • Popular Python library")
-	fmt.Println("      • Compatible with Gogram")
-	fmt.Println()
-	fmt.Println("  3️⃣  Pyrogram (Python)")
-	fmt.Println("      • Modern Python library")
-	fmt.Println("      • Fast and clean")
-	fmt.Println()
-	
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter choice (1-3): ")
-	choice, _ := reader.ReadString('\n')
-	return strings.TrimSpace(choice)
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// METHOD 1: GOGRAM SESSION (Native Go - Recommended!)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-func generateGogramSession() {
-	fmt.Println()
-	fmt.Println("╭─────────────────────────────────────╮")
-	fmt.Println("│  🔐 Gogram Session Generator        │")
-	fmt.Println("│  (Native Go - Best Method!)         │")
-	fmt.Println("╰─────────────────────────────────────╯")
-	fmt.Println()
-
+func generateSession() {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Get API credentials
-	apiID := getInput(reader, "Enter API_ID: ")
+	fmt.Println("📋 Enter your API credentials:")
+	fmt.Println("   (Get from https://my.telegram.org)")
+	fmt.Println()
+	
+	apiID := getInput(reader, "API_ID: ")
 	apiIDInt, err := strconv.Atoi(apiID)
 	if err != nil {
-		fmt.Println("❌ Invalid API_ID!")
+		fmt.Println("❌ Invalid API_ID! Must be a number.")
 		os.Exit(1)
 	}
 
-	apiHash := getInput(reader, "Enter API_HASH: ")
+	apiHash := getInput(reader, "API_HASH: ")
+	if apiHash == "" {
+		fmt.Println("❌ API_HASH cannot be empty!")
+		os.Exit(1)
+	}
 
-	// Create Telegram client
 	fmt.Println()
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	// Create Telegram client
 	fmt.Println("⏳ Creating Telegram client...")
 
 	client, err := telegram.NewClient(telegram.ClientConfig{
@@ -99,14 +57,10 @@ func generateGogramSession() {
 		AppHash:       apiHash,
 		StringSession: "",
 	})
-
 	if err != nil {
 		fmt.Printf("❌ Failed to create client: %v\n", err)
 		os.Exit(1)
 	}
-
-	fmt.Println("✅ Client created!")
-	fmt.Println()
 
 	// Connect to Telegram
 	fmt.Println("⏳ Connecting to Telegram servers...")
@@ -115,28 +69,25 @@ func generateGogramSession() {
 		fmt.Printf("❌ Connection failed: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("✅ Connected to Telegram!")
+	
+	fmt.Println("✅ Connected successfully!")
 	fmt.Println()
-
-	// Login instructions
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("📱 Login Instructions:")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("   1. Enter phone number with country code")
-	fmt.Println("      Example: +911234567890")
-	fmt.Println("   2. Enter verification code from Telegram")
-	fmt.Println("   3. If 2FA enabled, enter password")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 
 	// Get phone number
-	phone := getInput(reader, "📱 Enter phone number (with country code): ")
+	fmt.Println("📱 Login to your Telegram account:")
+	fmt.Println()
+	phone := getInput(reader, "Phone number (with country code, e.g., +911234567890): ")
+	
 	if !strings.HasPrefix(phone, "+") {
-		fmt.Println("⚠️  Warning: Phone should start with + and country code")
-		fmt.Println("   Example: +911234567890")
+		fmt.Println()
+		fmt.Println("⚠️  Warning: Phone number should include country code")
+		fmt.Println("   Example: +911234567890 (for India)")
+		fmt.Println()
 	}
 
-	// Send code
+	// Send verification code
 	fmt.Println()
 	fmt.Println("⏳ Sending verification code...")
 	
@@ -146,41 +97,42 @@ func generateGogramSession() {
 		os.Exit(1)
 	}
 
-	fmt.Println("✅ Verification code sent to your Telegram account!")
+	fmt.Println("✅ Verification code sent to your Telegram!")
 	fmt.Println()
 
 	// Get verification code
-	code := getInput(reader, "📲 Enter verification code: ")
+	code := getInput(reader, "Enter verification code: ")
 	
-	// Extract phone code hash from sentCode
+	// Extract phone code hash
 	var phoneCodeHash string
 	switch v := sentCode.(type) {
 	case *telegram.AuthSentCodeObj:
 		phoneCodeHash = v.PhoneCodeHash
 	default:
-		fmt.Println("❌ Failed to get phone code hash")
+		fmt.Println("❌ Failed to process verification code")
 		os.Exit(1)
 	}
 	
-	// Sign in with code
+	// Sign in
 	fmt.Println()
 	fmt.Println("⏳ Verifying code...")
 	
 	_, err = client.AuthSignIn(phone, phoneCodeHash, code, &telegram.EmailVerificationObj{})
 	
-	// Check if 2FA is required
+	// Handle 2FA if needed
 	if err != nil {
 		if strings.Contains(err.Error(), "SESSION_PASSWORD_NEEDED") || 
 		   strings.Contains(err.Error(), "password") {
-			fmt.Println("🔐 Two-Factor Authentication enabled")
+			
+			fmt.Println("🔐 Two-Factor Authentication detected")
 			fmt.Println()
 			
-			password := getInput(reader, "🔑 Enter 2FA password: ")
+			password := getInput(reader, "Enter your 2FA password: ")
 			
 			fmt.Println()
-			fmt.Println("⏳ Verifying password...")
+			fmt.Println("⏳ Verifying 2FA password...")
 			
-			// Get password info first
+			// Get password configuration
 			accountPassword, err := client.AccountGetPassword()
 			if err != nil {
 				fmt.Printf("❌ Failed to get password settings: %v\n", err)
@@ -194,13 +146,15 @@ func generateGogramSession() {
 				os.Exit(1)
 			}
 			
+			// Check password
 			_, err = client.AuthCheckPassword(inputPassword)
 			if err != nil {
-				fmt.Printf("❌ 2FA verification failed: %v\n", err)
+				fmt.Printf("❌ Wrong password! %v\n", err)
 				os.Exit(1)
 			}
+			
 		} else {
-			fmt.Printf("❌ Sign in failed: %v\n", err)
+			fmt.Printf("❌ Login failed: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -210,292 +164,114 @@ func generateGogramSession() {
 
 	// Get user info
 	user, err := client.GetMe()
-	if err != nil {
-		fmt.Printf("⚠️  Warning: Could not get user info: %v\n", err)
-	} else {
-		fmt.Printf("👤 Logged in as: %s %s (@%s)\n", user.FirstName, user.LastName, user.Username)
+	if err == nil {
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Printf("👤 Logged in as: %s", user.FirstName)
+		if user.LastName != "" {
+			fmt.Printf(" %s", user.LastName)
+		}
+		if user.Username != "" {
+			fmt.Printf(" (@%s)", user.Username)
+		}
+		fmt.Println()
+		fmt.Printf("🆔 User ID: %d\n", user.ID)
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
 	}
 
 	// Export session string
-	fmt.Println("⏳ Generating session string...")
+	fmt.Println("⏳ Generating string session...")
 	sessionString := client.ExportStringSession()
 
 	if sessionString == "" {
-		fmt.Println("❌ Failed to export session string!")
+		fmt.Println("❌ Failed to generate session string!")
 		os.Exit(1)
 	}
 
-	// Display success message
-	displaySuccess(sessionString, apiID, apiHash)
+	// Display session
+	displaySession(sessionString, apiID, apiHash)
 
 	// Save option
-	saveOption(reader, sessionString)
+	fmt.Print("💾 Save to file? (y/n): ")
+	save, _ := reader.ReadString('\n')
+	save = strings.TrimSpace(strings.ToLower(save))
+
+	if save == "y" || save == "yes" {
+		// Save session to file
+		err := os.WriteFile("session.txt", []byte(sessionString), 0600)
+		if err != nil {
+			fmt.Printf("❌ Failed to save session: %v\n", err)
+		} else {
+			fmt.Println("✅ Session saved to: session.txt")
+		}
+		
+		// Save .env file
+		envContent := fmt.Sprintf(`# Telegram API Credentials
+API_ID=%s
+API_HASH=%s
+
+# Bot Configuration
+BOT_TOKEN=your_bot_token_here
+
+# User Session
+STRING_SESSION=%s
+
+# Database
+DATABASE_URL=mongodb://localhost:27017/shizumusic
+
+# Required IDs
+LOGGER_ID=-1001234567890
+OWNER_ID=%d
+`, apiID, apiHash, sessionString, user.ID)
+
+		err = os.WriteFile(".env", []byte(envContent), 0600)
+		if err != nil {
+			fmt.Printf("⚠️  Failed to save .env file: %v\n", err)
+		} else {
+			fmt.Println("✅ Configuration saved to: .env")
+		}
+	}
 
 	fmt.Println()
-	fmt.Println("✅ Done! Your Gogram session is ready to use!")
-	fmt.Println("   Add it to your .env file and start ShizuMusic bot.")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("✅ Done! Your Gogram session is ready!")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 	
 	// Disconnect
 	client.Disconnect()
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// METHOD 2: TELETHON SESSION (Python)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-func generateTelethonSession() {
+func displaySession(session, apiID, apiHash string) {
 	fmt.Println()
 	fmt.Println("╭─────────────────────────────────────╮")
-	fmt.Println("│  🐍 Telethon Session Generator      │")
-	fmt.Println("│  (Python Method)                    │")
+	fmt.Println("│  ✅ STRING SESSION GENERATED!       │")
 	fmt.Println("╰─────────────────────────────────────╯")
 	fmt.Println()
-
-	// Check Python
-	if !checkPython() {
-		fmt.Println("❌ Python3 not found!")
-		fmt.Println("   Install: sudo apt install python3 python3-pip")
-		os.Exit(1)
-	}
-
-	// Install Telethon
-	fmt.Println("📦 Installing Telethon...")
-	installPythonPackage("telethon")
-	fmt.Println("✅ Telethon installed!")
-	fmt.Println()
-
-	// Python script for Telethon
-	pythonScript := `
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
-
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print("📱 Telethon Session Generator")
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print()
-
-api_id = int(input("Enter API_ID: "))
-api_hash = input("Enter API_HASH: ")
-
-print()
-print("⏳ Connecting to Telegram...")
-print("   Follow the prompts below:")
-print()
-
-with TelegramClient(StringSession(), api_id, api_hash) as client:
-    print()
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("✅ Telethon Session Generated!")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print()
-    print("📝 Your STRING_SESSION:")
-    print()
-    session_string = client.session.save()
-    print(session_string)
-    print()
-    print("⚠️  IMPORTANT:")
-    print("   • Save this session securely!")
-    print("   • Add to .env as STRING_SESSION")
-    print("   • Never share with anyone!")
-    print()
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print()
-    
-    save = input("💾 Save to session.txt? (y/n): ").strip().lower()
-    if save in ['y', 'yes']:
-        with open('session.txt', 'w') as f:
-            f.write(session_string)
-        print("✅ Saved to session.txt")
-    print()
-    print("✅ Done! Compatible with Gogram and all MTProto libraries.")
-`
-
-	// Run Telethon script
-	runPythonScript(pythonScript, "telethon")
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// METHOD 3: PYROGRAM SESSION (Python)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-func generatePyrogramSession() {
-	fmt.Println()
-	fmt.Println("╭─────────────────────────────────────╮")
-	fmt.Println("│  🐍 Pyrogram Session Generator      │")
-	fmt.Println("│  (Python Method)                    │")
-	fmt.Println("╰─────────────────────────────────────╯")
-	fmt.Println()
-
-	// Check Python
-	if !checkPython() {
-		fmt.Println("❌ Python3 not found!")
-		fmt.Println("   Install: sudo apt install python3 python3-pip")
-		os.Exit(1)
-	}
-
-	// Install Pyrogram
-	fmt.Println("📦 Installing Pyrogram + TgCrypto...")
-	installPythonPackage("pyrogram", "tgcrypto")
-	fmt.Println("✅ Pyrogram installed!")
-	fmt.Println()
-
-	// Python script for Pyrogram
-	pythonScript := `
-from pyrogram import Client
-import os
-
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print("📱 Pyrogram Session Generator")
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print()
-
-api_id = int(input("Enter API_ID: "))
-api_hash = input("Enter API_HASH: ")
-
-print()
-print("⏳ Connecting to Telegram...")
-print("   Follow the prompts below:")
-print()
-
-with Client("my_account", api_id, api_hash) as app:
-    print()
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("✅ Pyrogram Session Generated!")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print()
-    print("📝 Your STRING_SESSION:")
-    print()
-    session_string = app.export_session_string()
-    print(session_string)
-    print()
-    print("⚠️  IMPORTANT:")
-    print("   • Save this session securely!")
-    print("   • Add to .env as STRING_SESSION")
-    print("   • Never share with anyone!")
-    print()
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print()
-    
-    save = input("💾 Save to session.txt? (y/n): ").strip().lower()
-    if save in ['y', 'yes']:
-        with open('session.txt', 'w') as f:
-            f.write(session_string)
-        print("✅ Saved to session.txt")
-
-# Cleanup
-try:
-    os.remove("my_account.session")
-except:
-    pass
-
-print()
-print("✅ Done! Compatible with Gogram and all MTProto libraries.")
-`
-
-	// Run Pyrogram script
-	runPythonScript(pythonScript, "pyrogram")
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// HELPER FUNCTIONS
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-func getInput(reader *bufio.Reader, prompt string) string {
-	fmt.Print(prompt)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(input)
-}
-
-func displaySuccess(session, apiID, apiHash string) {
-	fmt.Println()
-	fmt.Println("╭─────────────────────────────────────╮")
-	fmt.Println("│  ✅ Session Generated Successfully! │")
-	fmt.Println("╰─────────────────────────────────────╯")
-	fmt.Println()
-	fmt.Println("📝 Your STRING_SESSION:")
+	fmt.Println("📝 Your String Session:")
 	fmt.Println()
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println(session)
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	fmt.Println("⚠️  IMPORTANT:")
-	fmt.Println("  • Keep this session string safe!")
-	fmt.Println("  • Never share it with anyone!")
-	fmt.Println("  • Add it to your .env file")
+	fmt.Println("⚠️  SECURITY WARNING:")
+	fmt.Println("   • Keep this session string PRIVATE")
+	fmt.Println("   • Never share with anyone")
+	fmt.Println("   • Anyone with this can access your account")
 	fmt.Println()
-	fmt.Println("📝 .env Configuration:")
+	fmt.Println("📋 Add to your .env file:")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("API_ID=%s\n", apiID)
 	fmt.Printf("API_HASH=%s\n", apiHash)
 	fmt.Println("BOT_TOKEN=your_bot_token_here")
 	fmt.Printf("STRING_SESSION=%s\n", session)
 	fmt.Println("DATABASE_URL=mongodb://localhost:27017/shizumusic")
-	fmt.Println("LOGGER_ID=-1001234567890")
-	fmt.Println("OWNER_ID=your_user_id")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 }
 
-func saveOption(reader *bufio.Reader, session string) {
-	fmt.Print("💾 Save session to file? (y/n): ")
-	save, _ := reader.ReadString('\n')
-	save = strings.TrimSpace(strings.ToLower(save))
-
-	if save == "y" || save == "yes" {
-		err := os.WriteFile("session.txt", []byte(session), 0600)
-		if err != nil {
-			fmt.Printf("❌ Failed to save: %v\n", err)
-		} else {
-			fmt.Println("✅ Session saved to session.txt")
-			fmt.Println("   File location: ./session.txt")
-		}
-	}
-}
-
-func checkPython() bool {
-	cmd := exec.Command("python3", "--version")
-	err := cmd.Run()
-	return err == nil
-}
-
-func installPythonPackage(packages ...string) {
-	args := append([]string{"install"}, packages...)
-	args = append(args, "--break-system-packages", "--quiet")
-	
-	cmd := exec.Command("pip3", args...)
-	err := cmd.Run()
-	
-	if err != nil {
-		// Try without --break-system-packages
-		args2 := append([]string{"install"}, packages...)
-		args2 = append(args2, "--quiet")
-		cmd2 := exec.Command("pip3", args2...)
-		cmd2.Run()
-	}
-}
-
-func runPythonScript(script, name string) {
-	// Write script to temp file
-	tmpFile := fmt.Sprintf("/tmp/%s_gen.py", name)
-	err := os.WriteFile(tmpFile, []byte(script), 0644)
-	if err != nil {
-		fmt.Printf("❌ Failed to create script: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Run script with interactive mode
-	cmd := exec.Command("python3", tmpFile)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	
-	err = cmd.Run()
-	if err != nil {
-		fmt.Printf("❌ Script failed: %v\n", err)
-	}
-
-	// Cleanup
-	os.Remove(tmpFile)
+func getInput(reader *bufio.Reader, prompt string) string {
+	fmt.Print(prompt)
+	input, _ := reader.ReadString('\n')
+	return strings.TrimSpace(input)
 }
