@@ -38,8 +38,8 @@ func (c *Client) StartBot(ctx context.Context) error {
 		return fmt.Errorf("failed to create bot client: %w", err)
 	}
 
-	// Start as bot
-	if err := client.Start(c.Config.BotToken); err != nil {
+	// Login as bot - correct way
+	if err := client.LoginBot(c.Config.BotToken); err != nil {
 		return fmt.Errorf("failed to start bot: %w", err)
 	}
 
@@ -64,13 +64,13 @@ func (c *Client) StartUser(ctx context.Context) error {
 
 	log.Println(">> Booting up user client...")
 
-	// Create user client
+	// Create user client with string session
 	client, err := tg.NewClient(tg.ClientConfig{
-		AppID:       c.Config.APIID,
-		AppHash:     c.Config.APIHash,
-		Session:     c.Config.StringSession,
-		LogLevel:    tg.LogInfo,
-		StringSession: true,
+		AppID:         c.Config.APIID,
+		AppHash:       c.Config.APIHash,
+		Session:       c.Config.StringSession,
+		LogLevel:      tg.LogInfo,
+		StringSession: c.Config.StringSession, // Pass the actual session string
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create user client: %w", err)
@@ -114,10 +114,9 @@ func (c *Client) SendToLogger(text string, photo string) error {
 	}
 
 	if photo != "" {
-		// Send with photo
+		// Send with photo - removed File field
 		_, err := c.BotClient.SendMedia(c.Config.LoggerID, photo, &tg.MediaOptions{
 			Caption: text,
-			File:    photo,
 		})
 		return err
 	}
