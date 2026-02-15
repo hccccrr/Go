@@ -72,7 +72,7 @@ func (c *Client) StartUser(ctx context.Context) error {
 	client, err := tg.NewClient(tg.ClientConfig{
 		AppID:         c.Config.APIID,
 		AppHash:       c.Config.APIHash,
-		Session:       c.Config.StringSession,
+		Session:       "./cache/assistant.session", // Proper session file path
 		LogLevel:      tg.LogInfo,
 		StringSession: c.Config.StringSession,
 	})
