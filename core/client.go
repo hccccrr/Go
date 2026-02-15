@@ -115,7 +115,7 @@ func (c *Client) SendToLogger(text string, photo string) error {
 
 	if photo != "" {
 		// Send with photo
-		_, err := c.BotClient.SendPhoto(c.Config.LoggerID, &tg.PhotoSendOptions{
+		_, err := c.BotClient.SendMedia(c.Config.LoggerID, photo, &tg.MediaOptions{
 			Caption: text,
 			File:    photo,
 		})
