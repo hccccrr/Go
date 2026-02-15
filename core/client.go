@@ -60,16 +60,15 @@ func (c *Client) StartBot(ctx context.Context) error {
 	return nil
 }
 
-// StartUser starts the user client
+// StartUser starts the assistant client
 func (c *Client) StartUser(ctx context.Context) error {
 	if c.Config.StringSession == "" {
-		log.Println("⚠️ No user session provided, skipping user client")
-		return nil
+		log.Fatal("❌ No STRING_SESSION provided for assistant client.")
 	}
 
-	log.Println(">> Booting up user client...")
+	log.Println(">> Starting assistant client...")
 
-	// Create user client with string session
+	// Create user client with string session from config
 	client, err := tg.NewClient(tg.ClientConfig{
 		AppID:         c.Config.APIID,
 		AppHash:       c.Config.APIHash,
@@ -78,22 +77,22 @@ func (c *Client) StartUser(ctx context.Context) error {
 		StringSession: c.Config.StringSession,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create user client: %w", err)
+		log.Fatal("❌ Failed to create assistant client: " + err.Error())
 	}
 
 	// Connect
 	if err := client.Connect(); err != nil {
-		return fmt.Errorf("failed to connect user client: %w", err)
+		log.Fatal("❌ Failed to connect assistant client: " + err.Error())
 	}
 
 	// Get user info
 	me, err := client.GetMe()
 	if err != nil {
-		return fmt.Errorf("failed to get user info: %w", err)
+		log.Fatal("❌ Failed to get assistant info: " + err.Error())
 	}
 
 	c.UserClient = client
-	log.Printf(">> User @%s is online now!", me.Username)
+	log.Printf(">> Assistant @%s is online now!", me.Username)
 
 	// Join support channels
 	go c.joinChannels()
@@ -139,7 +138,7 @@ func (c *Client) Stop() {
 	}
 
 	if c.UserClient != nil {
-		log.Println(">> Disconnecting user client...")
+		log.Println(">> Disconnecting assistant client...")
 		c.UserClient.Stop()
 	}
 }
