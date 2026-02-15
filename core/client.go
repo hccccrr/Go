@@ -85,7 +85,6 @@ func (c *Client) StartUser(ctx context.Context) error {
 		AppHash:       c.Config.APIHash,
 		StringSession: stringSession,
 		LogLevel:      tg.LogInfo,
-		Session:       "user.session", // User session file
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create user client: %w", err)
