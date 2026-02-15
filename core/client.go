@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"path/filepath"
 	"strings"
 
 	"shizumusic/config"
@@ -32,12 +33,15 @@ func NewClient(cfg *config.Config) (*Client, error) {
 func (c *Client) StartBot(ctx context.Context) error {
 	log.Println(">> Booting up bot client...")
 
+	// Session file path in cache directory
+	sessionPath := filepath.Join(".", "bot.session")
+
 	// Create bot client with session file
 	client, err := tg.NewClient(tg.ClientConfig{
 		AppID:    c.Config.APIID,
 		AppHash:  c.Config.APIHash,
 		LogLevel: tg.LogInfo,
-		Session:  "bot.session", // Bot session file
+		Session:  sessionPath,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create bot client: %w", err)
@@ -79,12 +83,15 @@ func (c *Client) StartUser(ctx context.Context) error {
 		return fmt.Errorf("failed to process session: %w", err)
 	}
 
+	// Session file path in cache directory
+	sessionPath := filepath.Join(".", "user.session")
+
 	// Create user client with converted session
 	client, err := tg.NewClient(tg.ClientConfig{
 		AppID:         c.Config.APIID,
 		AppHash:       c.Config.APIHash,
 		StringSession: stringSession,
-		Session:       "user.session",
+		Session:       sessionPath,
 		LogLevel:      tg.LogInfo,
 	})
 	if err != nil {
@@ -101,7 +108,7 @@ func (c *Client) StartUser(ctx context.Context) error {
 	if err != nil {
 		log.Printf("❌ Failed to authenticate user: %v", err)
 		log.Println("⚠️  Your STRING_SESSION might be invalid or expired")
-		log.Println("   Generate new session using: ./session-gen")
+		log.Println("   Generate new session using: python3 session_converter.py")
 		return fmt.Errorf("failed to authenticate user (invalid STRING_SESSION): %w", err)
 	}
 
@@ -135,10 +142,11 @@ func (c *Client) convertSession(session string) (string, error) {
 		sess, err := decodePyrogramSession(session)
 		if err == nil {
 			log.Println("   Detected: Pyrogram session format")
+			log.Println("   ✅ Successfully converted to Gogram format")
 			return sess.Encode(), nil
 		}
-		// If decoding failed, log the error for debugging
-		log.Printf("   Pyrogram decode attempt failed: %v", err)
+		// If decoding failed, log for debugging but continue
+		log.Printf("   Pyrogram decode failed (might already be Gogram): %v", err)
 	}
 	
 	// Assume it's already in Gogram format
@@ -195,7 +203,7 @@ func decodePyrogramSession(encodedString string) (*tg.Session, error) {
 	// Resolve DC hostname
 	hostname := tg.ResolveDC(dcID, testMode, false)
 	
-	log.Printf("   Pyrogram session decoded: DC=%d, TestMode=%v, Hostname=%s", dcID, testMode, hostname)
+	log.Printf("   📡 DC=%d, TestMode=%v, Host=%s", dcID, testMode, hostname)
 
 	return &tg.Session{
 		Hostname: hostname,
@@ -244,7 +252,7 @@ func decodeTelethonSession(sessionString string) (*tg.Session, error) {
 	copy(authKey, data[offset:offset+256])
 
 	hostname := fmt.Sprintf("%s:%d", ipAddress, port)
-	log.Printf("   Telethon session decoded: Hostname=%s", hostname)
+	log.Printf("   📡 Host=%s", hostname)
 
 	return &tg.Session{
 		Hostname: hostname,
