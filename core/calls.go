@@ -188,13 +188,20 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 		return err
 	}
 
+	// Type assert to proper InputGroupCall type
+	groupCall, ok := inputGroupCall.(tg.InputGroupCall)
+	if !ok {
+		c.binding.Stop(chatID)
+		return fmt.Errorf("invalid group call type")
+	}
+
 	// Join group call via Telegram
 	resultParams := `{"transport": null}`
 	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Muted:        false,
 		VideoStopped: mediaDesc.Video == nil,
-		Call:         inputGroupCall,
-		Params: &tg.DataJSON{
+		Call:         groupCall, // Use type-asserted value
+		Params: &tg.DataJson{ // Changed from DataJSON to DataJson
 			Data: jsonParams,
 		},
 	})
@@ -236,17 +243,55 @@ func (c *Calls) handleP2PCall(chatID int64, mediaDesc ntgcalls.MediaDescription)
 
 // GetInputGroupCall gets input group call for chat
 func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
-	// Get full chat to access group call
-	fullChat, err := c.client.GetFullChat(chatID)
+	// Use ChannelsGetFullChannel instead of GetFullChat
+	// First, get the channel/chat
+	chat, err := c.client.GetChat(chatID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get chat: %w", err)
 	}
 
-	if fullChat.Call == nil {
-		return nil, fmt.Errorf("no active group call in chat")
+	// Convert to input peer
+	inputPeer := chat.InputPeer()
+	
+	// For channels/supergroups, use ChannelsGetFullChannel
+	if inputChannel, ok := inputPeer.(*tg.InputPeerChannel); ok {
+		fullChannel, err := c.client.ChannelsGetFullChannel(&tg.InputChannelObj{
+			ChannelID:  inputChannel.ChannelID,
+			AccessHash: inputChannel.AccessHash,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get full channel: %w", err)
+		}
+
+		// Extract call from FullChannel
+		if fullChan, ok := fullChannel.FullChat.(*tg.ChannelFullObj); ok {
+			if fullChan.Call == nil {
+				return nil, fmt.Errorf("no active group call in chat")
+			}
+			return fullChan.Call, nil
+		}
 	}
 
-	return fullChat.Call, nil
+	// For regular groups, use MessagesGetFullChat
+	if inputChat, ok := inputPeer.(*tg.InputPeerChat); ok {
+		fullChat, err := c.client.MessagesGetFullChat(inputChat.ChatID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get full chat: %w", err)
+		}
+
+		if fullChat.FullChat == nil {
+			return nil, fmt.Errorf("no full chat data")
+		}
+
+		if chatFull, ok := fullChat.FullChat.(*tg.ChatFullObj); ok {
+			if chatFull.Call == nil {
+				return nil, fmt.Errorf("no active group call in chat")
+			}
+			return chatFull.Call, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unsupported chat type")
 }
 
 // Stop stops NTgCalls
