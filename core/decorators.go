@@ -15,14 +15,12 @@ func CheckMode(handler HandlerFunc) HandlerFunc {
 	return func(m *tg.NewMessage) error {
 		// PrivateMode is already a bool, no need to convert to string
 		if config.Cfg.PrivateMode {
-			// Get sender from message
-			sender := m.Sender()
-			if sender == nil {
+			// Get sender from message - Sender is a field, not a method
+			if m.Sender == nil {
 				return handler(m)
 			}
 			
-			senderID := sender.ID
-			if !config.Cfg.IsSudo(senderID) {
+			if !config.Cfg.IsSudo(m.Sender.ID) {
 				m.Reply("**🔒 Private Mode Enabled**\n\n" +
 					"This bot is in private mode and only authorized users can use it.")
 				return nil
@@ -39,21 +37,20 @@ func AdminOnly(handler HandlerFunc) HandlerFunc {
 		// Delete command message - m.Delete() returns 2 values
 		_, _ = m.Delete()
 
-		// Get sender
-		sender := m.Sender()
-		if sender == nil {
+		// Get sender - Sender is a field
+		if m.Sender == nil {
 			return nil
 		}
 
 		// Check for anonymous admin
-		if sender.ID == m.Chat().ID {
+		if m.Sender.ID == m.Chat.ID {
 			m.Reply("**❌ Anonymous Admin Detected**\n\n" +
 				"You're an anonymous admin. Please revert to your personal account to use this command.")
 			return nil
 		}
 
 		// Bypass for sudo users
-		if config.Cfg.IsSudo(sender.ID) {
+		if config.Cfg.IsSudo(m.Sender.ID) {
 			return handler(m)
 		}
 
@@ -72,21 +69,20 @@ func AuthOnly(db *Database) func(HandlerFunc) HandlerFunc {
 			// Delete command message
 			_, _ = m.Delete()
 
-			// Get sender
-			sender := m.Sender()
-			if sender == nil {
+			// Get sender - Sender is a field
+			if m.Sender == nil {
 				return nil
 			}
 
 			// Check for anonymous admin
-			if sender.ID == m.Chat().ID {
+			if m.Sender.ID == m.Chat.ID {
 				m.Reply("**❌ Anonymous Admin Detected**\n\n" +
 					"You're an anonymous admin. Please revert to your personal account to use this command.")
 				return nil
 			}
 
 			// Check if VC is active
-			active, _ := db.IsActiveVC(m.Chat().ID)
+			active, _ := db.IsActiveVC(m.Chat.ID)
 			if !active {
 				m.Reply("**❌ No Active Stream**\n\n" +
 					"Nothing is currently playing in the voice chat!")
@@ -94,11 +90,11 @@ func AuthOnly(db *Database) func(HandlerFunc) HandlerFunc {
 			}
 
 			// Check if authchat is enabled
-			isAuthChat, _ := db.IsAuthchat(m.Chat().ID)
+			isAuthChat, _ := db.IsAuthchat(m.Chat.ID)
 
 			if !isAuthChat {
 				// Bypass for sudo users
-				if config.Cfg.IsSudo(sender.ID) {
+				if config.Cfg.IsSudo(m.Sender.ID) {
 					return handler(m)
 				}
 
@@ -117,14 +113,13 @@ func UserOnly(handler HandlerFunc) HandlerFunc {
 		// Delete command message
 		_, _ = m.Delete()
 
-		// Get sender
-		sender := m.Sender()
-		if sender == nil {
+		// Get sender - Sender is a field
+		if m.Sender == nil {
 			return nil
 		}
 
 		// Check for anonymous admin
-		if sender.ID == m.Chat().ID {
+		if m.Sender.ID == m.Chat.ID {
 			m.Reply("**❌ Anonymous Admin Detected**\n\n" +
 				"You're an anonymous admin. Please revert to your personal account to use this command.")
 			return nil
@@ -137,13 +132,12 @@ func UserOnly(handler HandlerFunc) HandlerFunc {
 // SudoOnly checks if user is sudo
 func SudoOnly(handler HandlerFunc) HandlerFunc {
 	return func(m *tg.NewMessage) error {
-		// Get sender
-		sender := m.Sender()
-		if sender == nil {
+		// Get sender - Sender is a field
+		if m.Sender == nil {
 			return nil
 		}
 
-		if !config.Cfg.IsSudo(sender.ID) {
+		if !config.Cfg.IsSudo(m.Sender.ID) {
 			m.Reply("**❌ Unauthorized**\n\n" +
 				"This command is only for sudo users!")
 			return nil
@@ -156,13 +150,12 @@ func SudoOnly(handler HandlerFunc) HandlerFunc {
 // OwnerOnly checks if user is owner
 func OwnerOnly(handler HandlerFunc) HandlerFunc {
 	return func(m *tg.NewMessage) error {
-		// Get sender
-		sender := m.Sender()
-		if sender == nil {
+		// Get sender - Sender is a field
+		if m.Sender == nil {
 			return nil
 		}
 
-		if !config.Cfg.IsGod(sender.ID) {
+		if !config.Cfg.IsGod(m.Sender.ID) {
 			m.Reply("**❌ Unauthorized**\n\n" +
 				"This command is only for the bot owner!")
 			return nil
@@ -187,14 +180,13 @@ func PlayWrapper(handler func(*tg.NewMessage, *PlayContext) error) HandlerFunc {
 		// Delete command message
 		_, _ = m.Delete()
 
-		// Get sender
-		sender := m.Sender()
-		if sender == nil {
+		// Get sender - Sender is a field
+		if m.Sender == nil {
 			return nil
 		}
 
 		// Check for anonymous admin
-		if sender.ID == m.Chat().ID {
+		if m.Sender.ID == m.Chat.ID {
 			m.Reply("**❌ Anonymous Admin Detected**\n\n" +
 				"You're an anonymous admin. Please revert to your personal account to use this command.")
 			return nil
@@ -202,8 +194,8 @@ func PlayWrapper(handler func(*tg.NewMessage, *PlayContext) error) HandlerFunc {
 
 		ctx := &PlayContext{}
 
-		// Parse command
-		parts := strings.Fields(m.Text())
+		// Parse command - Text is a field
+		parts := strings.Fields(m.Text)
 		if len(parts) == 0 {
 			return nil
 		}
@@ -229,8 +221,8 @@ func PlayWrapper(handler func(*tg.NewMessage, *PlayContext) error) HandlerFunc {
 			}
 		}
 
-		// Check for replied media
-		if m.ReplyToMsgID() != 0 {
+		// Check for replied media - ReplyToMsgID is a field
+		if m.ReplyToMsgID != 0 {
 			// Get replied message
 			// TODO: Implement media detection from reply
 			// ctx.IsTGAudio = ...
