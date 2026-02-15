@@ -32,12 +32,11 @@ func NewClient(cfg *config.Config) (*Client, error) {
 func (c *Client) StartBot(ctx context.Context) error {
 	log.Println(">> Booting up bot client...")
 
-	// Create bot client with session file
+	// Create bot client - Gogram auto-manages session
 	client, err := tg.NewClient(tg.ClientConfig{
 		AppID:    c.Config.APIID,
 		AppHash:  c.Config.APIHash,
 		LogLevel: tg.LogInfo,
-		Session:  "bot.session", // Bot session file
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create bot client: %w", err)
@@ -79,19 +78,20 @@ func (c *Client) StartUser(ctx context.Context) error {
 		return fmt.Errorf("failed to process session: %w", err)
 	}
 
-	// Create user client with converted session
+	// Create user client - ONLY StringSession, NO Session field!
+	// This is the key fix - Gogram manages session internally when StringSession is provided
 	client, err := tg.NewClient(tg.ClientConfig{
 		AppID:         c.Config.APIID,
 		AppHash:       c.Config.APIHash,
-		StringSession: stringSession,
-		Session:       "user.session",
+		StringSession: stringSession,  // Only this field!
 		LogLevel:      tg.LogInfo,
+		// NO Session field at all!
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create user client: %w", err)
 	}
 
-	// Connect
+	// Connect (auto-authenticates with string session)
 	if err := client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect user client: %w", err)
 	}
@@ -101,7 +101,7 @@ func (c *Client) StartUser(ctx context.Context) error {
 	if err != nil {
 		log.Printf("❌ Failed to authenticate user: %v", err)
 		log.Println("⚠️  Your STRING_SESSION might be invalid or expired")
-		log.Println("   Generate new session using: ./session-gen")
+		log.Println("   Generate new session using session generator")
 		return fmt.Errorf("failed to authenticate user (invalid STRING_SESSION): %w", err)
 	}
 
@@ -116,8 +116,6 @@ func (c *Client) StartUser(ctx context.Context) error {
 
 // convertSession automatically detects and converts session format
 func (c *Client) convertSession(session string) (string, error) {
-	// Detect session type by checking the format
-	
 	// Telethon sessions start with "1"
 	if strings.HasPrefix(session, "1") {
 		log.Println("   Detected: Telethon session format")
@@ -129,13 +127,12 @@ func (c *Client) convertSession(session string) (string, error) {
 	}
 	
 	// Pyrogram sessions are base64 without "1" prefix
-	// Try to decode as Pyrogram
 	if !strings.HasPrefix(session, "1") && len(session) > 100 {
-		log.Println("   Detected: Pyrogram session format")
+		log.Println("   Trying: Pyrogram session format")
 		sess, err := decodePyrogramSession(session)
 		if err != nil {
 			// If Pyrogram decode fails, assume it's already Gogram
-			log.Println("   Treating as: Gogram session format")
+			log.Println("   Using: Gogram session format (native)")
 			return session, nil
 		}
 		return sess.Encode(), nil
@@ -148,18 +145,15 @@ func (c *Client) convertSession(session string) (string, error) {
 
 // decodePyrogramSession decodes a Pyrogram session string
 func decodePyrogramSession(encodedString string) (*tg.Session, error) {
-	// Pyrogram SESSION_STRING_FORMAT: 
-	// Big-endian, uint8, uint32, bool, 256-byte array, uint64, bool
 	const (
-		dcIDSize     = 1   // uint8
-		apiIDSize    = 4   // uint32
-		testModeSize = 1   // bool
+		dcIDSize     = 1
+		apiIDSize    = 4
+		testModeSize = 1
 		authKeySize  = 256
-		userIDSize   = 8   // uint64
-		isBotSize    = 1   // bool
+		userIDSize   = 8
+		isBotSize    = 1
 	)
 
-	// Add padding to base64 if needed
 	for len(encodedString)%4 != 0 {
 		encodedString += "="
 	}
@@ -174,11 +168,8 @@ func decodePyrogramSession(encodedString string) (*tg.Session, error) {
 		return nil, fmt.Errorf("unexpected data length: got %d, want %d", len(packedData), expectedSize)
 	}
 
-	// Extract DC ID and test mode
 	dcID := int(uint8(packedData[0]))
 	testMode := packedData[5] != 0
-
-	// Extract auth key
 	authKey := make([]byte, authKeySize)
 	copy(authKey, packedData[6:6+authKeySize])
 
@@ -190,7 +181,6 @@ func decodePyrogramSession(encodedString string) (*tg.Session, error) {
 
 // decodeTelethonSession decodes a Telethon session string
 func decodeTelethonSession(sessionString string) (*tg.Session, error) {
-	// Remove "1" prefix
 	if !strings.HasPrefix(sessionString, "1") {
 		return nil, fmt.Errorf("invalid Telethon session: must start with '1'")
 	}
@@ -200,7 +190,6 @@ func decodeTelethonSession(sessionString string) (*tg.Session, error) {
 		return nil, fmt.Errorf("failed to decode base64: %w", err)
 	}
 
-	// Determine IP length (IPv4 or IPv6)
 	ipLen := 4
 	if len(data) == 352 {
 		ipLen = 16
@@ -212,18 +201,14 @@ func decodeTelethonSession(sessionString string) (*tg.Session, error) {
 	}
 
 	offset := 1
-
-	// Extract IP address
 	ipData := data[offset : offset+ipLen]
 	ip := net.IP(ipData)
 	ipAddress := ip.String()
 	offset += ipLen
 
-	// Extract port (Big Endian)
 	port := binary.BigEndian.Uint16(data[offset : offset+2])
 	offset += 2
 
-	// Extract auth key
 	authKey := make([]byte, 256)
 	copy(authKey, data[offset:offset+256])
 
