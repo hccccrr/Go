@@ -1,0 +1,211 @@
+package config
+
+import (
+	"log"
+	"os"
+	"strconv"
+	"sync"
+
+	"github.com/joho/godotenv"
+)
+
+// Config holds all configuration
+type Config struct {
+	// Required
+	APIHash       string
+	APIID         int32
+	BotToken      string
+	DatabaseURL   string
+	StringSession string
+	LoggerID      int64
+	OwnerID       int64
+
+	// Optional
+	BlackImg        string
+	BotName         string
+	BotPic          string
+	LeaderboardTime string
+	LyricsAPI       string
+	MaxFavorites    int
+	PlayLimit       int
+	PrivateMode     bool
+	SongLimit       int
+	TelegramImg     string
+	TGAudioLimit    int64
+	TGVideoLimit    int64
+	TZ              string
+	UpstreamRepo    string
+	UpstreamBranch  string
+	GitToken        string
+
+	// Runtime (thread-safe maps)
+	BannedUsers  map[int64]bool
+	SudoUsers    map[int64]bool
+	GodUsers     map[int64]bool
+	Cache        map[string]interface{}
+	PlayerCache  map[int64]interface{}
+	QueueCache   map[int64]interface{}
+	SongCache    map[string]interface{}
+	CacheDir     string
+	DwlDir       string
+	DeleteDict   map[string]interface{}
+	
+	// Mutexes for thread safety
+	BannedMutex sync.RWMutex
+	SudoMutex   sync.RWMutex
+	GodMutex    sync.RWMutex
+	CacheMutex  sync.RWMutex
+}
+
+var Cfg *Config
+
+// Load loads configuration from environment
+func Load() (*Config, error) {
+	// Load .env file if exists
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using system environment")
+	}
+
+	apiID, _ := strconv.Atoi(getEnv("API_ID", "0"))
+	loggerID, _ := strconv.ParseInt(getEnv("LOGGER_ID", "0"), 10, 64)
+	ownerID, _ := strconv.ParseInt(getEnv("OWNER_ID", "0"), 10, 64)
+
+	cfg := &Config{
+		// Required
+		APIHash:       getEnv("API_HASH", ""),
+		APIID:         int32(apiID),
+		BotToken:      getEnv("BOT_TOKEN", ""),
+		DatabaseURL:   getEnv("DATABASE_URL", ""),
+		StringSession: getEnv("STRING_SESSION", ""),
+		LoggerID:      loggerID,
+		OwnerID:       ownerID,
+
+		// Optional
+		BlackImg:        getEnv("BLACK_IMG", "https://telegra.ph/file/2c546060b20dfd7c1ff2d.jpg"),
+		BotName:         getEnv("BOT_NAME", "ShizuMusic"),
+		BotPic:          getEnv("BOT_PIC", "https://files.catbox.moe/jwkw46.jpg"),
+		LeaderboardTime: getEnv("LEADERBOARD_TIME", "3:00"),
+		LyricsAPI:       getEnv("LYRICS_API", ""),
+		MaxFavorites:    getEnvInt("MAX_FAVORITES", 30),
+		PlayLimit:       getEnvInt("PLAY_LIMIT", 0),
+		PrivateMode:     getEnv("PRIVATE_MODE", "off") == "on",
+		SongLimit:       getEnvInt("SONG_LIMIT", 0),
+		TelegramImg:     getEnv("TELEGRAM_IMG", ""),
+		TGAudioLimit:    int64(getEnvInt("TG_AUDIO_SIZE_LIMIT", 104857600)),
+		TGVideoLimit:    int64(getEnvInt("TG_VIDEO_SIZE_LIMIT", 1073741824)),
+		TZ:              getEnv("TZ", "Asia/Kolkata"),
+		UpstreamRepo:    getEnv("UPSTREAM_REPO", "https://github.com/hccccrr/Go"),
+		UpstreamBranch:  getEnv("UPSTREAM_BRANCH", "main"),
+		GitToken:        getEnv("GIT_TOKEN", ""),
+
+		// Directories
+		CacheDir: "./cache/",
+		DwlDir:   "./downloads/",
+
+		// Initialize runtime maps
+		BannedUsers:  make(map[int64]bool),
+		SudoUsers:    make(map[int64]bool),
+		GodUsers:     make(map[int64]bool),
+		Cache:        make(map[string]interface{}),
+		PlayerCache:  make(map[int64]interface{}),
+		QueueCache:   make(map[int64]interface{}),
+		SongCache:    make(map[string]interface{}),
+		DeleteDict:   make(map[string]interface{}),
+	}
+
+	// Add owner to god and sudo users
+	if cfg.OwnerID != 0 {
+		cfg.GodUsers[cfg.OwnerID] = true
+		cfg.SudoUsers[cfg.OwnerID] = true
+	}
+
+	Cfg = cfg
+	return cfg, nil
+}
+
+// Validate checks if all required fields are present
+func (c *Config) Validate() error {
+	if c.APIID == 0 {
+		log.Fatal("❌ API_ID is missing!")
+	}
+	if c.APIHash == "" {
+		log.Fatal("❌ API_HASH is missing!")
+	}
+	if c.BotToken == "" {
+		log.Fatal("❌ BOT_TOKEN is missing!")
+	}
+	if c.DatabaseURL == "" {
+		log.Fatal("❌ DATABASE_URL is missing!")
+	}
+	if c.StringSession == "" {
+		log.Fatal("❌ STRING_SESSION is missing!")
+	}
+	if c.LoggerID == 0 {
+		log.Fatal("❌ LOGGER_ID is missing!")
+	}
+	if c.OwnerID == 0 {
+		log.Fatal("❌ OWNER_ID is missing!")
+	}
+
+	log.Println("✅ Config validation passed!")
+	return nil
+}
+
+// IsBanned checks if user is banned (thread-safe)
+func (c *Config) IsBanned(userID int64) bool {
+	c.BannedMutex.RLock()
+	defer c.BannedMutex.RUnlock()
+	return c.BannedUsers[userID]
+}
+
+// AddBanned adds user to banned list (thread-safe)
+func (c *Config) AddBanned(userID int64) {
+	c.BannedMutex.Lock()
+	defer c.BannedMutex.Unlock()
+	c.BannedUsers[userID] = true
+}
+
+// RemoveBanned removes user from banned list (thread-safe)
+func (c *Config) RemoveBanned(userID int64) {
+	c.BannedMutex.Lock()
+	defer c.BannedMutex.Unlock()
+	delete(c.BannedUsers, userID)
+}
+
+// IsSudo checks if user is sudo (thread-safe)
+func (c *Config) IsSudo(userID int64) bool {
+	c.SudoMutex.RLock()
+	defer c.SudoMutex.RUnlock()
+	return c.SudoUsers[userID]
+}
+
+// AddSudo adds user to sudo list (thread-safe)
+func (c *Config) AddSudo(userID int64) {
+	c.SudoMutex.Lock()
+	defer c.SudoMutex.Unlock()
+	c.SudoUsers[userID] = true
+}
+
+// IsGod checks if user is god/owner (thread-safe)
+func (c *Config) IsGod(userID int64) bool {
+	c.GodMutex.RLock()
+	defer c.GodMutex.RUnlock()
+	return c.GodUsers[userID]
+}
+
+// Helper functions
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
+	}
+	return fallback
+}
