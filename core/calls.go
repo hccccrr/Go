@@ -243,38 +243,46 @@ func (c *Calls) handleP2PCall(chatID int64, mediaDesc ntgcalls.MediaDescription)
 
 // GetInputGroupCall gets input group call for chat
 func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
-	// Use ChannelsGetFullChannel instead of GetFullChat
-	// First, get the channel/chat
-	chat, err := c.client.GetChat(chatID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get chat: %w", err)
-	}
+	// For supergroups/channels (negative IDs less than -1000000000000)
+	if chatID < -1000000000000 {
+		// Extract channel ID
+		channelID := -(chatID + 1000000000000)
+		
+		// Get the channel first to get access hash
+		peer, err := c.client.ResolvePeer(chatID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve peer: %w", err)
+		}
 
-	// Convert to input peer
-	inputPeer := chat.InputPeer()
-	
-	// For channels/supergroups, use ChannelsGetFullChannel
-	if inputChannel, ok := inputPeer.(*tg.InputPeerChannel); ok {
+		// Get access hash from peer
+		var accessHash int64
+		if inputPeer, ok := peer.(*tg.InputPeerChannel); ok {
+			accessHash = inputPeer.AccessHash
+		} else {
+			return nil, fmt.Errorf("peer is not a channel")
+		}
+
+		// Get full channel info
 		fullChannel, err := c.client.ChannelsGetFullChannel(&tg.InputChannelObj{
-			ChannelID:  inputChannel.ChannelID,
-			AccessHash: inputChannel.AccessHash,
+			ChannelID:  channelID,
+			AccessHash: accessHash,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get full channel: %w", err)
 		}
 
 		// Extract call from FullChannel
-		if fullChan, ok := fullChannel.FullChat.(*tg.ChannelFullObj); ok {
+		if fullChan, ok := fullChannel.FullChat.(*tg.ChannelFull); ok {
 			if fullChan.Call == nil {
 				return nil, fmt.Errorf("no active group call in chat")
 			}
 			return fullChan.Call, nil
 		}
-	}
-
-	// For regular groups, use MessagesGetFullChat
-	if inputChat, ok := inputPeer.(*tg.InputPeerChat); ok {
-		fullChat, err := c.client.MessagesGetFullChat(inputChat.ChatID)
+	} else {
+		// For regular groups (negative IDs greater than -1000000000000)
+		groupID := -chatID
+		
+		fullChat, err := c.client.MessagesGetFullChat(groupID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get full chat: %w", err)
 		}
@@ -283,7 +291,7 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("no full chat data")
 		}
 
-		if chatFull, ok := fullChat.FullChat.(*tg.ChatFullObj); ok {
+		if chatFull, ok := fullChat.FullChat.(*tg.ChatFull); ok {
 			if chatFull.Call == nil {
 				return nil, fmt.Errorf("no active group call in chat")
 			}
