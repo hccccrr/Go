@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"shizumusic/config"
 
@@ -38,9 +39,13 @@ func (c *Client) StartBot(ctx context.Context) error {
 		return fmt.Errorf("failed to create bot client: %w", err)
 	}
 
-	// Start as bot
-	if err := client.Start(c.Config.BotToken); err != nil {
-		return fmt.Errorf("failed to start bot: %w", err)
+	// Login as bot with proper error handling
+	if err := client.LoginBot(c.Config.BotToken); err != nil {
+		if strings.Contains(err.Error(), "ACCESS_TOKEN_EXPIRED") {
+			log.Fatal("❌ Bot token has been revoked or expired.")
+		} else {
+			log.Fatal("❌ Failed to start the bot: " + err.Error())
+		}
 	}
 
 	// Get bot info
@@ -70,7 +75,7 @@ func (c *Client) StartUser(ctx context.Context) error {
 		AppHash:       c.Config.APIHash,
 		Session:       c.Config.StringSession,
 		LogLevel:      tg.LogInfo,
-		StringSession: c.Config.StringSession, // Pass the actual session string
+		StringSession: c.Config.StringSession,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create user client: %w", err)
@@ -114,7 +119,7 @@ func (c *Client) SendToLogger(text string, photo string) error {
 	}
 
 	if photo != "" {
-		// Send with photo - removed File field
+		// Send with photo
 		_, err := c.BotClient.SendMedia(c.Config.LoggerID, photo, &tg.MediaOptions{
 			Caption: text,
 		})
