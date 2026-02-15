@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 
 	"shizumusic/config"
 
@@ -30,33 +28,19 @@ func NewClient(cfg *config.Config) (*Client, error) {
 func (c *Client) StartBot(ctx context.Context) error {
 	log.Println(">> Booting up bot client...")
 
-	// Get current directory for session file
-	currentDir, err := os.Getwd()
-	if err != nil {
-		currentDir = "."
-	}
-	
-	// Create sessions directory if not exists
-	sessionsDir := filepath.Join(currentDir, "sessions")
-	os.MkdirAll(sessionsDir, 0755)
-	
-	// Bot session file path
-	botSessionFile := filepath.Join(sessionsDir, "shizumusic_bot.session")
-
-	// Create bot client with session file
+	// Create bot client - let Gogram handle session automatically
 	client, err := tg.NewClient(tg.ClientConfig{
-		AppID:       c.Config.APIID,
-		AppHash:     c.Config.APIHash,
-		LogLevel:    tg.LogInfo,
-		SessionFile: botSessionFile, // Use SessionFile instead
+		AppID:    c.Config.APIID,
+		AppHash:  c.Config.APIHash,
+		LogLevel: tg.LogInfo,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create bot client: %w", err)
 	}
 
-	// Start as bot
+	// Login as bot
 	if err := client.LoginBot(c.Config.BotToken); err != nil {
-		return fmt.Errorf("failed to start bot: %w", err)
+		return fmt.Errorf("failed to login bot: %w", err)
 	}
 
 	// Get bot info
@@ -71,49 +55,39 @@ func (c *Client) StartBot(ctx context.Context) error {
 	return nil
 }
 
-// StartUser starts the user client
+// StartUser starts the user client (with STRING_SESSION)
 func (c *Client) StartUser(ctx context.Context) error {
 	if c.Config.StringSession == "" {
-		log.Println("⚠️ No user session provided, skipping user client")
+		log.Println("⚠️ No STRING_SESSION provided, skipping user client")
+		log.Println("   User client needed for voice chat streaming")
 		return nil
 	}
 
 	log.Println(">> Booting up user client...")
 
-	// Get current directory
-	currentDir, err := os.Getwd()
-	if err != nil {
-		currentDir = "."
-	}
-	
-	// Create sessions directory if not exists
-	sessionsDir := filepath.Join(currentDir, "sessions")
-	os.MkdirAll(sessionsDir, 0755)
-	
-	// User session file path
-	userSessionFile := filepath.Join(sessionsDir, "shizumusic_user.session")
-
 	// Create user client with STRING_SESSION
 	client, err := tg.NewClient(tg.ClientConfig{
 		AppID:         c.Config.APIID,
 		AppHash:       c.Config.APIHash,
+		StringSession: c.Config.StringSession, // Import from STRING_SESSION
 		LogLevel:      tg.LogInfo,
-		SessionFile:   userSessionFile,
-		StringSession: c.Config.StringSession, // Import from string session
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create user client: %w", err)
 	}
 
-	// Connect and authenticate with string session
+	// Connect (auto-authenticates with string session)
 	if err := client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect user client: %w", err)
 	}
 
-	// Verify connection by getting user info
+	// Verify by getting user info
 	me, err := client.GetMe()
 	if err != nil {
-		return fmt.Errorf("failed to get user info (check STRING_SESSION): %w", err)
+		log.Printf("❌ Failed to get user info: %v", err)
+		log.Println("⚠️  Your STRING_SESSION might be invalid or expired")
+		log.Println("   Generate new session using: ./session-gen")
+		return fmt.Errorf("failed to authenticate user (invalid STRING_SESSION): %w", err)
 	}
 
 	c.UserClient = client
@@ -135,7 +109,9 @@ func (c *Client) joinChannels() {
 	
 	for _, channel := range channels {
 		if _, err := c.UserClient.JoinChannel(channel); err != nil {
-			log.Printf("Warning: Failed to join @%s: %v", channel, err)
+			log.Printf("⚠️  Failed to join @%s: %v", channel, err)
+		} else {
+			log.Printf("✅ Joined @%s", channel)
 		}
 	}
 }
