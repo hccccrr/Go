@@ -38,8 +38,8 @@ func (c *Client) StartBot(ctx context.Context) error {
 		return fmt.Errorf("failed to create bot client: %w", err)
 	}
 
-	// Login as bot - correct way
-	if err := client.LoginBot(c.Config.BotToken); err != nil {
+	// Start as bot
+	if err := client.Start(c.Config.BotToken); err != nil {
 		return fmt.Errorf("failed to start bot: %w", err)
 	}
 
