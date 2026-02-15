@@ -67,7 +67,7 @@ func Load() (*Config, error) {
 	}
 
 	apiID, _ := strconv.Atoi(getEnv("API_ID", "0"))
-	loggerID, _ := strconv.ParseInt(getEnv("LOGGER_ID", "0"), 10, 64)
+	loggerID, _ := strconv.ParseInt(getEnv("LOGGER_ID", "-1003303257249"), 10, 64)
 	ownerID, _ := strconv.ParseInt(getEnv("OWNER_ID", "0"), 10, 64)
 
 	// Hardcoded string session (ਤੇਰਾ ਪੂਰਾ session ਇੱਥੇ ਪਾ ਦੇ)
@@ -79,7 +79,7 @@ func Load() (*Config, error) {
 		APIID:         int32(apiID),
 		BotToken:      getEnv("BOT_TOKEN", ""),
 		DatabaseURL:   getEnv("DATABASE_URL", ""),
-		StringSession: stringSession, // ਸਿੱਧਾ hardcoded session
+		StringSession: stringSession, 
 		LoggerID:      loggerID,
 		OwnerID:       ownerID,
 
