@@ -140,7 +140,7 @@ func generateGogramSession() {
 	fmt.Println()
 	fmt.Println("⏳ Sending verification code...")
 	
-	sentCode, err := client.AuthSendCode(phone, int32(apiIDInt), apiHash)
+	sentCode, err := client.AuthSendCode(phone, int32(apiIDInt), apiHash, &telegram.CodeSettings{})
 	if err != nil {
 		fmt.Printf("❌ Failed to send code: %v\n", err)
 		os.Exit(1)
@@ -152,11 +152,21 @@ func generateGogramSession() {
 	// Get verification code
 	code := getInput(reader, "📲 Enter verification code: ")
 	
+	// Extract phone code hash from sentCode
+	var phoneCodeHash string
+	switch v := sentCode.(type) {
+	case *telegram.AuthSentCodeObj:
+		phoneCodeHash = v.PhoneCodeHash
+	default:
+		fmt.Println("❌ Failed to get phone code hash")
+		os.Exit(1)
+	}
+	
 	// Sign in with code
 	fmt.Println()
 	fmt.Println("⏳ Verifying code...")
 	
-	_, err = client.AuthSignIn(phone, sentCode.PhoneCodeHash, code)
+	_, err = client.AuthSignIn(phone, phoneCodeHash, code, &telegram.EmailVerificationObj{})
 	
 	// Check if 2FA is required
 	if err != nil {
@@ -170,7 +180,21 @@ func generateGogramSession() {
 			fmt.Println()
 			fmt.Println("⏳ Verifying password...")
 			
-			_, err = client.AuthCheckPassword(password)
+			// Get password info first
+			accountPassword, err := client.AccountGetPassword()
+			if err != nil {
+				fmt.Printf("❌ Failed to get password settings: %v\n", err)
+				os.Exit(1)
+			}
+			
+			// Compute password SRP
+			inputPassword, err := telegram.GetInputCheckPassword(password, accountPassword)
+			if err != nil {
+				fmt.Printf("❌ Failed to compute password: %v\n", err)
+				os.Exit(1)
+			}
+			
+			_, err = client.AuthCheckPassword(inputPassword)
 			if err != nil {
 				fmt.Printf("❌ 2FA verification failed: %v\n", err)
 				os.Exit(1)
