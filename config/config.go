@@ -70,13 +70,16 @@ func Load() (*Config, error) {
 	loggerID, _ := strconv.ParseInt(getEnv("LOGGER_ID", "0"), 10, 64)
 	ownerID, _ := strconv.ParseInt(getEnv("OWNER_ID", "0"), 10, 64)
 
+	// Hardcoded string session (ਤੇਰਾ ਪੂਰਾ session ਇੱਥੇ ਪਾ ਦੇ)
+	stringSession := "1BvEeyJrZXkiOiJ0bC9DSFBWK2t2cFpGYzlZZEUwN0RLaGpxTXNSUEEya2FpMTEwZEYrMXBuVmloeUNkbC84aVBwTFlSVXY2MXlmcHFDZ2ZXNTljMW83UGV6T3R5MjFza1lVcWtvWGw0Y0loSnVId0c2ZzVDc0M2MWV4ZHFwTjZSdWlPc2xEM2FNQmY4NGtEVzdzQjlJTE9WelRNc3FrSzV4U1IvbktmUmFvTDVDMTRsY2V4N1RNOVM2M3BmRnU0T0x4M0x5T1lDQnpGQmFQUHY4UUh1UTkrZjVGdUlod2s2VWs3dDJPbEVGOWdqeHh3ODFZWXRReVpxUjJFRzBSd1BrdU03eXVVd2JjbDRhaXlpaXRoTEpzTFB5Z0JTaE1UZTBXME5JZThIZHcxajJBdTNIUi9yOUZDdGoxaXB2RXFGbExuOVQrTzlSN2RHU292ZVdDZUhHOVQ3dmtUT1g3V1E9PSIsImhhc2giOiJmOUtFUGc5Q2ZaWT0iLCJkY19pZCI6MiwiaXBfYWRkciI6IjE0OS4xNTQuMTY3LjUwOjQ0MyIsImFwcF9pZCI6MzE2MzcwNjR9"
+
 	cfg := &Config{
 		// Required
 		APIHash:       getEnv("API_HASH", ""),
 		APIID:         int32(apiID),
 		BotToken:      getEnv("BOT_TOKEN", ""),
 		DatabaseURL:   getEnv("DATABASE_URL", ""),
-		StringSession: getEnv("STRING_SESSION", ""),
+		StringSession: stringSession, // ਸਿੱਧਾ hardcoded session
 		LoggerID:      loggerID,
 		OwnerID:       ownerID,
 
