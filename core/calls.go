@@ -271,7 +271,7 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("failed to get full channel: %w", err)
 		}
 
-		// Extract call from FullChannel
+		// Extract call from FullChannel - ChannelFull is the concrete type
 		if fullChan, ok := fullChannel.FullChat.(*tg.ChannelFull); ok {
 			if fullChan.Call == nil {
 				return nil, fmt.Errorf("no active group call in chat")
@@ -291,7 +291,8 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("no full chat data")
 		}
 
-		if chatFull, ok := fullChat.FullChat.(*tg.ChatFull); ok {
+		// ChatFull is the concrete type, not interface
+		if chatFull, ok := fullChat.FullChat.(*tg.ChatFullObj); ok {
 			if chatFull.Call == nil {
 				return nil, fmt.Errorf("no active group call in chat")
 			}
