@@ -194,8 +194,8 @@ func PlayWrapper(handler func(*tg.NewMessage, *PlayContext) error) HandlerFunc {
 
 		ctx := &PlayContext{}
 
-		// Parse command - Text is a field
-		parts := strings.Fields(m.Text)
+		// Parse command - Text is a METHOD
+		parts := strings.Fields(m.Text())
 		if len(parts) == 0 {
 			return nil
 		}
@@ -221,8 +221,8 @@ func PlayWrapper(handler func(*tg.NewMessage, *PlayContext) error) HandlerFunc {
 			}
 		}
 
-		// Check for replied media - ReplyToMsgID is a field
-		if m.ReplyToMsgID != 0 {
+		// Check for replied media - ReplyToMsgID is a METHOD
+		if m.ReplyToMsgID() != 0 {
 			// Get replied message
 			// TODO: Implement media detection from reply
 			// ctx.IsTGAudio = ...
