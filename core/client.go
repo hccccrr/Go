@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	"shizumusic/config"
 
@@ -28,17 +30,31 @@ func NewClient(cfg *config.Config) (*Client, error) {
 func (c *Client) StartBot(ctx context.Context) error {
 	log.Println(">> Booting up bot client...")
 
-	// Create bot client
+	// Get current directory for session file
+	currentDir, err := os.Getwd()
+	if err != nil {
+		currentDir = "."
+	}
+	
+	// Create sessions directory if not exists
+	sessionsDir := filepath.Join(currentDir, "sessions")
+	os.MkdirAll(sessionsDir, 0755)
+	
+	// Bot session file path
+	botSessionFile := filepath.Join(sessionsDir, "shizumusic_bot.session")
+
+	// Create bot client with session file
 	client, err := tg.NewClient(tg.ClientConfig{
-		AppID:    c.Config.APIID, // Already int32, no conversion needed
-		AppHash:  c.Config.APIHash,
-		LogLevel: tg.LogInfo,
+		AppID:       c.Config.APIID,
+		AppHash:     c.Config.APIHash,
+		LogLevel:    tg.LogInfo,
+		SessionFile: botSessionFile, // Use SessionFile instead
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create bot client: %w", err)
 	}
 
-	// Start as bot - use LoginBot instead of Start with token
+	// Start as bot
 	if err := client.LoginBot(c.Config.BotToken); err != nil {
 		return fmt.Errorf("failed to start bot: %w", err)
 	}
@@ -64,27 +80,40 @@ func (c *Client) StartUser(ctx context.Context) error {
 
 	log.Println(">> Booting up user client...")
 
-	// Create user client
+	// Get current directory
+	currentDir, err := os.Getwd()
+	if err != nil {
+		currentDir = "."
+	}
+	
+	// Create sessions directory if not exists
+	sessionsDir := filepath.Join(currentDir, "sessions")
+	os.MkdirAll(sessionsDir, 0755)
+	
+	// User session file path
+	userSessionFile := filepath.Join(sessionsDir, "shizumusic_user.session")
+
+	// Create user client with STRING_SESSION
 	client, err := tg.NewClient(tg.ClientConfig{
-		AppID:         c.Config.APIID, // Already int32, no conversion needed
+		AppID:         c.Config.APIID,
 		AppHash:       c.Config.APIHash,
-		Session:       c.Config.StringSession,
 		LogLevel:      tg.LogInfo,
-		StringSession: c.Config.StringSession, // Use string value, not bool
+		SessionFile:   userSessionFile,
+		StringSession: c.Config.StringSession, // Import from string session
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create user client: %w", err)
 	}
 
-	// Connect
+	// Connect and authenticate with string session
 	if err := client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect user client: %w", err)
 	}
 
-	// Get user info
+	// Verify connection by getting user info
 	me, err := client.GetMe()
 	if err != nil {
-		return fmt.Errorf("failed to get user info: %w", err)
+		return fmt.Errorf("failed to get user info (check STRING_SESSION): %w", err)
 	}
 
 	c.UserClient = client
@@ -98,6 +127,10 @@ func (c *Client) StartUser(ctx context.Context) error {
 
 // joinChannels joins support channels
 func (c *Client) joinChannels() {
+	if c.UserClient == nil {
+		return
+	}
+
 	channels := []string{"Its_HellBot"}
 	
 	for _, channel := range channels {
@@ -114,7 +147,7 @@ func (c *Client) SendToLogger(text string, photo string) error {
 	}
 
 	if photo != "" {
-		// Send with photo using SendMedia
+		// Send with photo
 		_, err := c.BotClient.SendMedia(c.Config.LoggerID, photo, &tg.MediaOptions{
 			Caption: text,
 		})
