@@ -84,6 +84,7 @@ func (c *Client) StartUser(ctx context.Context) error {
 		AppID:         c.Config.APIID,
 		AppHash:       c.Config.APIHash,
 		StringSession: stringSession,
+		Session:       "user.session",
 		LogLevel:      tg.LogInfo,
 	})
 	if err != nil {
