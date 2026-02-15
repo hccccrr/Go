@@ -30,7 +30,7 @@ func (c *Client) StartBot(ctx context.Context) error {
 
 	// Create bot client
 	client, err := tg.NewClient(tg.ClientConfig{
-		AppID:    int(c.Config.APIID),
+		AppID:    APIID: int32(c.Config.APIID),
 		AppHash:  c.Config.APIHash,
 		LogLevel: tg.LogInfo,
 	})
