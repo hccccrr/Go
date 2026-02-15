@@ -113,7 +113,7 @@ func generateGogramSession() {
 	fmt.Println()
 
 	// Start authentication
-	err = client.Start(nil)
+	err = client.Start()
 	if err != nil {
 		fmt.Printf("❌ Login failed: %v\n", err)
 		os.Exit(1)
