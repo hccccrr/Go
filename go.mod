@@ -1,4 +1,4 @@
-module main
+module shizumusic
 
 go 1.25.5
 
