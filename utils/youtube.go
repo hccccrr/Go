@@ -292,16 +292,7 @@ func NewYouTubeHandler() *YouTubeHandler {
 	}
 }
 
-// VideoInfo represents YouTube video information
-type VideoInfo struct {
-	ID        string
-	Title     string
-	Duration  string
-	Channel   string
-	Views     string
-	Link      string
-	Thumbnail string
-}
+
 
 // Download downloads audio/video from YouTube
 func (y *YouTubeHandler) Download(ctx context.Context, link string, isVideoID, isVideo bool) (string, error) {
