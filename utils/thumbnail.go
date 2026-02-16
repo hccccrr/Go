@@ -32,20 +32,6 @@ func NewThumbnail() *Thumbnail {
 	}
 }
 
-// YouTubeSearcher interface for getting video data
-type YouTubeSearcher interface {
-	GetVideoInfo(videoID string) (*VideoInfo, error)
-}
-
-// VideoInfo contains video information
-type VideoInfo struct {
-	Title     string
-	Channel   string
-	Duration  string
-	Views     string
-	Thumbnail string
-}
-
 // Generate creates a thumbnail image for a video
 // Returns the file path of generated thumbnail
 func (t *Thumbnail) Generate(width, height int, videoID string) string {
