@@ -220,8 +220,8 @@ func formatBootMessage() string {
 **System Information:**
 • **Status:** ` + status + `
 • **Version:** ` + version.Info.ShizuMusic + `
-• **Go Version:** ` + version.Info.GoVersion + `
-• **Gogram:** ` + version.Info.Gogram + `
+• **py Version:** ` + version.Info.GoVersion + `
+• **pyrogram:** ` + version.Info.Gogram + `
 • **NTgCalls:** ` + version.Info.NTgCalls + `
 • **Uptime:** ` + version.GetUptimeString() + `
 
