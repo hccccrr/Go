@@ -291,7 +291,7 @@ func (c *Client) registerCallbackHandlers(db *Database) error {
 
 // joinChannels joins support channels
 func (c *Client) joinChannels() {
-	channels := []string{"Its_HellBot"}
+	channels := []string{"PBX_CHAT"}
 	
 	for _, channel := range channels {
 		if _, err := c.UserClient.JoinChannel(channel); err != nil {
