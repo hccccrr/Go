@@ -1,6 +1,6 @@
 module shizumusic
 
-go 1.18
+go 1.21
 
 require (
 	github.com/Laky-64/gologging v1.1.0
