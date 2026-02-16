@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -11,228 +12,230 @@ import (
 	"shizumusic/config"
 	"shizumusic/core"
 	"shizumusic/version"
-)
 
-var (
-	isShuttingDown bool
-	globalClient   *core.Client
-	globalDB       *core.Database
-	globalCalls    *core.Calls
+	tg "github.com/amarnathcjd/gogram/telegram"
 )
 
 func main() {
-	log.Println("🎵 Starting ShizuMusic Bot...")
+	fmt.Println("🎵 Starting ShizuMusic Bot...")
 
-	// Load configuration
+	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
 	}
 
-	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		log.Fatal("Config validation failed:", err)
 	}
 
 	// Create directories
-	if err := createDirectories(cfg); err != nil {
-		log.Fatal("Failed to create directories:", err)
+	os.MkdirAll(cfg.DwlDir, 0755)
+	os.MkdirAll(cfg.CacheDir, 0755)
+	fmt.Printf("✅  Created directories: [%s %s]\n", cfg.DwlDir, cfg.CacheDir)
+
+	// Initialize clients
+	fmt.Println(">> Initializing Telegram clients...")
+	client, err := core.NewClient(cfg)
+	if err != nil {
+		log.Fatal("Failed to create client:", err)
 	}
 
-	// Setup signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		log.Printf("🛑 Received signal: %v", sig)
-		shutdownHandler(ctx, cancel)
-	}()
+	ctx := context.Background()
 
 	// Start bot
-	if err := startBot(ctx, cfg); err != nil {
+	if err := client.StartBot(ctx); err != nil {
 		log.Fatal("Failed to start bot:", err)
 	}
 
-	// Wait for shutdown signal
-	<-ctx.Done()
-	log.Println("✅ Shutdown complete. Goodbye!")
-}
-
-func startBot(ctx context.Context, cfg *config.Config) error {
-	log.Println("✅ All checks completed! Let's start ShizuMusic...")
-
-	// Initialize clients
-	log.Println(">> Initializing Telegram clients...")
-	client, err := core.NewClient(cfg)
-	if err != nil {
-		return err
-	}
-	globalClient = client
-
-	// Start bot client
-	if err := client.StartBot(ctx); err != nil {
-		return err
-	}
-
-	// Start user client
+	// Start assistant
+	fmt.Println(">> Starting assistant client...")
 	if err := client.StartUser(ctx); err != nil {
-		return err
+		log.Fatal("Failed to start assistant:", err)
 	}
 
-	// Initialize database
-	log.Println(">> Connecting to database...")
+	// Database
+	fmt.Println(">> Connecting to database...")
 	db, err := core.NewDatabase(cfg.DatabaseURL)
 	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	fmt.Println(">> Database connection successful!")
+
+	// NTgCalls
+	fmt.Println(">> Booting NTgCalls...")
+	calls := core.NewCalls(client.UserClient)
+	if err := calls.Start(); err != nil {
+		log.Fatal("Failed to start NTgCalls:", err)
+	}
+	fmt.Println("✅  NTgCalls initialized successfully!")
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// REGISTER HANDLERS HERE!
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	bot := client.BotClient
+
+	// /start command
+	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/start"}, func(m *tg.NewMessage) error {
+		text := fmt.Sprintf(`
+🎵 **Welcome to ShizuMusic!**
+
+Hello %s! I'm alive and ready to play music!
+
+**Version:** %s
+**Status:** Online ✅
+
+**Quick Commands:**
+/help - Show all commands
+/play - Play a song
+/ping - Check bot status
+
+**Support:** @Its_HellBot
+`, m.Sender.FirstName, version.Version)
+
+		_, err := m.Reply(text, &tg.SendOptions{ParseMode: "Markdown"})
 		return err
-	}
-	globalDB = db
+	})
 
-	// Initialize NTgCalls only if user client is available
-	if client.UserClient != nil {
-		log.Println(">> Booting NTgCalls...")
-		calls := core.NewCalls(client.UserClient)
-		if err := calls.Start(); err != nil {
-			log.Printf("⚠️  Failed to start NTgCalls: %v", err)
-			log.Println("   Voice chat features will not be available")
+	// /help command
+	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/help"}, func(m *tg.NewMessage) error {
+		text := `
+📚 **ShizuMusic Help**
+
+**Music Commands:**
+/play <song> - Play a song
+/pause - Pause playback
+/resume - Resume playback
+/skip - Skip current song
+/end - End playback
+
+**Queue:**
+/queue - Show queue
+/shuffle - Shuffle queue
+
+**Info:**
+/ping - Check bot status
+/stats - Bot statistics
+
+More commands coming soon!
+`
+		_, err := m.Reply(text, &tg.SendOptions{ParseMode: "Markdown"})
+		return err
+	})
+
+	// /ping command
+	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/ping"}, func(m *tg.NewMessage) error {
+		start := time.Now()
+		msg, _ := m.Reply("⏳ Pinging...", nil)
+		elapsed := time.Since(start).Milliseconds()
+
+		uptime := time.Since(cfg.StartTime)
+		hours := int(uptime.Hours())
+		minutes := int(uptime.Minutes()) % 60
+
+		text := fmt.Sprintf(`
+🏓 **Pong!**
+
+**Response Time:** %dms
+**Uptime:** %dh %dm
+**NTgCalls:** %dms
+**Status:** Online ✅
+
+**Version:** %s
+`, elapsed, hours, minutes, calls.GetPing(), version.Version)
+
+		msg.Edit(text, &tg.SendOptions{ParseMode: "Markdown"})
+		return nil
+	})
+
+	// /stats command
+	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/stats"}, func(m *tg.NewMessage) error {
+		totalUsers, _ := db.TotalUsersCount()
+		totalSongs, _ := db.TotalSongsCount()
+		activeVCs := db.GetActiveVC()
+
+		text := fmt.Sprintf(`
+📊 **Bot Statistics**
+
+**Users:** %d
+**Songs Played:** %d
+**Active VCs:** %d
+**Version:** %s
+
+**Uptime:** %s
+**Status:** Online ✅
+`, totalUsers, totalSongs, len(activeVCs), version.Version, 
+		time.Since(cfg.StartTime).Round(time.Second))
+
+		_, err := m.Reply(text, &tg.SendOptions{ParseMode: "Markdown"})
+		return err
+	})
+
+	// Fallback for unknown commands
+	bot.OnNewMessage(tg.OnNewMessage{}, func(m *tg.NewMessage) error {
+		// Only respond to commands
+		if len(m.Text()) > 0 && m.Text()[0] == '/' {
+			text := "❌ Unknown command! Send /help for available commands."
+			m.Reply(text, nil)
+		}
+		return nil
+	})
+
+	fmt.Println("✅  Handlers registered!")
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// SEND BOOT MESSAGE
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	if cfg.LoggerID != 0 {
+		botMe, _ := bot.GetMe()
+		userMe, _ := client.UserClient.GetMe()
+
+		bootMsg := fmt.Sprintf(`
+🎵 **ShizuMusic Started!**
+
+✅ **Version:** %s
+✅ **Bot:** @%s
+✅ **Assistant:** @%s
+✅ **Database:** Connected
+✅ **NTgCalls:** Ready
+
+**Status:** Bot is now online! ✅
+**Time:** %s
+
+Send /start to test!
+`, version.Version, botMe.Username, userMe.Username, time.Now().Format("15:04:05"))
+
+		_, err := bot.SendMessage(cfg.LoggerID, bootMsg, &tg.SendOptions{ParseMode: "Markdown"})
+		if err != nil {
+			fmt.Printf("⚠️  Failed to send boot message: %v\n", err)
 		} else {
-			globalCalls = calls
-			log.Println("✅ NTgCalls initialized successfully!")
-		}
-	} else {
-		log.Println("⚠️  User client not available - NTgCalls disabled")
-		log.Println("   Voice chat features will not work")
-		log.Println("   Add STRING_SESSION to enable voice chat")
-	}
-
-	// Send boot message
-	bootMsg := formatBootMessage()
-	if err := client.SendToLogger(bootMsg, cfg.BotPic); err != nil {
-		log.Printf("⚠️  Failed to send boot message: %v", err)
-	}
-
-	log.Printf("🎵 ShizuMusic [%s] is now online!", version.Info.ShizuMusic)
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	log.Println("✅ Bot Client:   READY")
-	if client.UserClient != nil {
-		log.Println("✅ User Client:  READY")
-	} else {
-		log.Println("⚠️  User Client:  NOT AVAILABLE")
-	}
-	log.Println("✅ Database:     CONNECTED")
-	if globalCalls != nil {
-		log.Println("✅ NTgCalls:     READY")
-	} else {
-		log.Println("⚠️  NTgCalls:     DISABLED")
-	}
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-	// Keep running
-	for !isShuttingDown {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(1 * time.Second):
-			// Heartbeat - check if still alive
+			fmt.Println("✅  Boot message sent to logger!")
 		}
 	}
 
-	return nil
-}
+	// Print status
+	fmt.Printf("\n🎵 ShizuMusic [%s] is now online!\n", version.Version)
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("✅  Bot Client:   READY")
+	fmt.Println("✅  User Client:  READY")
+	fmt.Println("✅  Database:     CONNECTED")
+	fmt.Println("✅  NTgCalls:     READY")
+	fmt.Println("✅  Handlers:     REGISTERED")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("\n📝  Bot is ready! Test with /start")
+	fmt.Println("⏸️   Press Ctrl+C to stop\n")
 
-func shutdownHandler(ctx context.Context, cancel context.CancelFunc) {
-	if isShuttingDown {
-		return
-	}
-	isShuttingDown = true
+	// Idle - wait for signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
 
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	log.Println("🛑 Shutdown signal received. Stopping ShizuMusic...")
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-	// Stop NTgCalls first (active voice chats)
-	if globalCalls != nil {
-		log.Println(">> Stopping NTgCalls...")
-		globalCalls.Stop()
-		log.Println("✅ NTgCalls stopped")
-	}
-
-	// Stop Telegram clients
-	if globalClient != nil {
-		log.Println(">> Disconnecting Telegram clients...")
-		globalClient.Stop()
-		log.Println("✅ Telegram clients disconnected")
-	}
-
-	// Close database connection
-	if globalDB != nil {
-		log.Println(">> Closing database connection...")
-		globalDB.Close()
-		log.Println("✅ Database connection closed")
-	}
-
-	// Send offline message
-	if globalClient != nil && globalClient.BotClient != nil {
-		offlineMsg := `#STOP
-
-**ShizuMusic Bot is going offline**
-
-**• Version:** ` + version.Info.ShizuMusic + `
-**• Uptime:** ` + version.GetUptimeString()
-
-		if err := globalClient.SendToLogger(offlineMsg, ""); err != nil {
-			log.Printf("⚠️  Failed to send offline message: %v", err)
-		}
-	}
-
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	log.Printf("👋 ShizuMusic [%s] is now offline!", version.Info.ShizuMusic)
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-	// Trigger context cancellation
-	cancel()
-}
-
-func createDirectories(cfg *config.Config) error {
-	dirs := []string{cfg.DwlDir, cfg.CacheDir}
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-	}
-	log.Printf("✅ Created directories: %v", dirs)
-	return nil
-}
-
-func formatBootMessage() string {
-	status := "✅ READY"
-	if globalClient == nil || globalClient.UserClient == nil {
-		status = "⚠️ LIMITED (No User Client)"
-	}
-
-	return `#START
-
-**🎵 ShizuMusic Bot is now online!**
-
-**System Information:**
-• **Status:** ` + status + `
-• **Version:** ` + version.Info.ShizuMusic + `
-• **py Version:** ` + version.Info.GoVersion + `
-• **pyrogram:** ` + version.Info.Gogram + `
-• **NTgCalls:** ` + version.Info.NTgCalls + `
-• **Uptime:** ` + version.GetUptimeString() + `
-
-**Features:**
-✅ Music Playback
-✅ Queue Management
-✅ Multi-platform Support
-` + func() string {
-		if globalClient != nil && globalClient.UserClient != nil {
-			return "✅ Voice Chat Streaming"
-		}
-		return "⚠️ Voice Chat (Disabled - No User Client)"
-	}()
+	// Cleanup
+	fmt.Println("\n⏹️  Shutting down...")
+	calls.Stop()
+	db.Close()
+	client.Stop()
+	fmt.Println("✅  Shutdown complete!")
 }
