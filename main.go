@@ -12,8 +12,6 @@ import (
 	"shizumusic/config"
 	"shizumusic/core"
 	"shizumusic/version"
-
-	tg "github.com/amarnathcjd/gogram/telegram"
 )
 
 func main() {
@@ -33,6 +31,7 @@ func main() {
 	os.MkdirAll(cfg.DwlDir, 0755)
 	os.MkdirAll(cfg.CacheDir, 0755)
 	fmt.Printf("✅  Created directories: [%s %s]\n", cfg.DwlDir, cfg.CacheDir)
+	fmt.Println("✅  All checks completed! Let's start ShizuMusic...")
 
 	// Initialize clients
 	fmt.Println(">> Initializing Telegram clients...")
@@ -49,7 +48,6 @@ func main() {
 	}
 
 	// Start assistant
-	fmt.Println(">> Starting assistant client...")
 	if err := client.StartUser(ctx); err != nil {
 		log.Fatal("Failed to start assistant:", err)
 	}
@@ -71,125 +69,19 @@ func main() {
 	fmt.Println("✅  NTgCalls initialized successfully!")
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// REGISTER HANDLERS HERE!
+	// AUTO-LOAD HANDLERS (Python style!)
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	bot := client.BotClient
-
-	// /start command
-	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/start"}, func(m *tg.NewMessage) error {
-		text := fmt.Sprintf(`
-🎵 **Welcome to ShizuMusic!**
-
-Hello %s! I'm alive and ready to play music!
-
-**Version:** %s
-**Status:** Online ✅
-
-**Quick Commands:**
-/help - Show all commands
-/play - Play a song
-/ping - Check bot status
-
-**Support:** @Its_HellBot
-`, m.Sender.FirstName, version.Version)
-
-		_, err := m.Reply(text, &tg.SendOptions{ParseMode: "Markdown"})
-		return err
-	})
-
-	// /help command
-	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/help"}, func(m *tg.NewMessage) error {
-		text := `
-📚 **ShizuMusic Help**
-
-**Music Commands:**
-/play <song> - Play a song
-/pause - Pause playback
-/resume - Resume playback
-/skip - Skip current song
-/end - End playback
-
-**Queue:**
-/queue - Show queue
-/shuffle - Shuffle queue
-
-**Info:**
-/ping - Check bot status
-/stats - Bot statistics
-
-More commands coming soon!
-`
-		_, err := m.Reply(text, &tg.SendOptions{ParseMode: "Markdown"})
-		return err
-	})
-
-	// /ping command
-	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/ping"}, func(m *tg.NewMessage) error {
-		start := time.Now()
-		msg, _ := m.Reply("⏳ Pinging...", nil)
-		elapsed := time.Since(start).Milliseconds()
-
-		uptime := time.Since(cfg.StartTime)
-		hours := int(uptime.Hours())
-		minutes := int(uptime.Minutes()) % 60
-
-		text := fmt.Sprintf(`
-🏓 **Pong!**
-
-**Response Time:** %dms
-**Uptime:** %dh %dm
-**NTgCalls:** %dms
-**Status:** Online ✅
-
-**Version:** %s
-`, elapsed, hours, minutes, calls.GetPing(), version.Version)
-
-		msg.Edit(text, &tg.SendOptions{ParseMode: "Markdown"})
-		return nil
-	})
-
-	// /stats command
-	bot.OnNewMessage(tg.OnNewMessage{Pattern: "^/stats"}, func(m *tg.NewMessage) error {
-		totalUsers, _ := db.TotalUsersCount()
-		totalSongs, _ := db.TotalSongsCount()
-		activeVCs := db.GetActiveVC()
-
-		text := fmt.Sprintf(`
-📊 **Bot Statistics**
-
-**Users:** %d
-**Songs Played:** %d
-**Active VCs:** %d
-**Version:** %s
-
-**Uptime:** %s
-**Status:** Online ✅
-`, totalUsers, totalSongs, len(activeVCs), version.Version, 
-		time.Since(cfg.StartTime).Round(time.Second))
-
-		_, err := m.Reply(text, &tg.SendOptions{ParseMode: "Markdown"})
-		return err
-	})
-
-	// Fallback for unknown commands
-	bot.OnNewMessage(tg.OnNewMessage{}, func(m *tg.NewMessage) error {
-		// Only respond to commands
-		if len(m.Text()) > 0 && m.Text()[0] == '/' {
-			text := "❌ Unknown command! Send /help for available commands."
-			m.Reply(text, nil)
-		}
-		return nil
-	})
-
-	fmt.Println("✅  Handlers registered!")
+	if err := client.LoadHandlers(db); err != nil {
+		log.Fatal("Failed to load handlers:", err)
+	}
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	// SEND BOOT MESSAGE
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 	if cfg.LoggerID != 0 {
-		botMe, _ := bot.GetMe()
+		botMe, _ := client.BotClient.GetMe()
 		userMe, _ := client.UserClient.GetMe()
 
 		bootMsg := fmt.Sprintf(`
@@ -200,6 +92,7 @@ More commands coming soon!
 ✅ **Assistant:** @%s
 ✅ **Database:** Connected
 ✅ **NTgCalls:** Ready
+✅ **Handlers:** Loaded
 
 **Status:** Bot is now online! ✅
 **Time:** %s
@@ -207,11 +100,9 @@ More commands coming soon!
 Send /start to test!
 `, version.Version, botMe.Username, userMe.Username, time.Now().Format("15:04:05"))
 
-		_, err := bot.SendMessage(cfg.LoggerID, bootMsg, &tg.SendOptions{ParseMode: "Markdown"})
+		_, err := client.BotClient.SendMessage(cfg.LoggerID, bootMsg, nil)
 		if err != nil {
 			fmt.Printf("⚠️  Failed to send boot message: %v\n", err)
-		} else {
-			fmt.Println("✅  Boot message sent to logger!")
 		}
 	}
 
@@ -222,12 +113,12 @@ Send /start to test!
 	fmt.Println("✅  User Client:  READY")
 	fmt.Println("✅  Database:     CONNECTED")
 	fmt.Println("✅  NTgCalls:     READY")
-	fmt.Println("✅  Handlers:     REGISTERED")
+	fmt.Println("✅  Handlers:     AUTO-LOADED")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("\n📝  Bot is ready! Test with /start")
 	fmt.Println("⏸️   Press Ctrl+C to stop\n")
 
-	// Idle - wait for signals
+	// Idle
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
