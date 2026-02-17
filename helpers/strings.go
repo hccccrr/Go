@@ -105,3 +105,44 @@ func (t TEXTS) HelpSudo() string {
 func (t TEXTS) HelpOwners() string {
 	return "**🔱 Owner Commands**\n\n/eval, /exec, /addsudo"
 }
+
+// Profile returns user profile text template
+// Args: levelSymbol, mention, id, userType, level, songsPlayed, joinDate, poweredBy
+func (t TEXTS) Profile() string {
+	return `╭─────────────────────╮
+│  **👤 User Profile**
+╰─────────────────────╯
+
+**%s**
+
+**🏷️ Name:** %s
+**🆔 ID:** ` + "`%d`" + `
+**👑 Type:** %s
+**⭐ Level:** %s
+**🎵 Songs Played:** ` + "`%d`" + `
+**📅 Joined:** %s
+
+**🔗 Powered By:** %s`
+}
+
+// Stats returns bot statistics text template
+// Args: users, chats, gbans, blocked, songs, active, core, cpu, disk, ram, uptime, mention
+func (t TEXTS) Stats() string {
+	return `╭─────────────────────╮
+│  **📊 Bot Statistics**
+╰─────────────────────╯
+
+**👥 Total Users:** ` + "`%d`" + `
+**💬 Total Chats:** ` + "`%d`" + `
+**🚫 Gbanned:** ` + "`%d`" + `
+**⛔ Blocked:** ` + "`%d`" + `
+**🎵 Songs Played:** ` + "`%d`" + `
+**🎙️ Active VCs:** ` + "`%d`" + `
+**🔢 CPU Cores:** ` + "`%d`" + `
+**⚡ CPU Usage:** ` + "`%s`" + `
+**💾 Disk Usage:** ` + "`%s`" + `
+**🎯 RAM Usage:** ` + "`%s`" + `
+**⏰ Uptime:** ` + "`%s`" + `
+
+**🔗 Powered By:** %s`
+}
