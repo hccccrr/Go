@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -19,6 +20,7 @@ type Config struct {
 	StringSession string
 	LoggerID      int64
 	OwnerID       int64
+	StartTime     time.Time
 
 	// Optional
 	BlackImg        string
@@ -39,17 +41,17 @@ type Config struct {
 	GitToken        string
 
 	// Runtime (thread-safe maps)
-	BannedUsers  map[int64]bool
-	SudoUsers    map[int64]bool
-	GodUsers     map[int64]bool
-	Cache        map[string]interface{}
-	PlayerCache  map[int64]interface{}
-	QueueCache   map[int64]interface{}
-	SongCache    map[string]interface{}
-	CacheDir     string
-	DwlDir       string
-	DeleteDict   map[string]interface{}
-	
+	BannedUsers map[int64]bool
+	SudoUsers   map[int64]bool
+	GodUsers    map[int64]bool
+	Cache       map[string]interface{}
+	PlayerCache map[int64]interface{}
+	QueueCache  map[int64]interface{}
+	SongCache   map[string]interface{}
+	CacheDir    string
+	DwlDir      string
+	DeleteDict  map[string]interface{}
+
 	// Mutexes for thread safety
 	BannedMutex sync.RWMutex
 	SudoMutex   sync.RWMutex
@@ -61,22 +63,19 @@ var Cfg *Config
 
 // Load loads configuration from environment
 func Load() (*Config, error) {
-	// Load .env file if exists
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment")
 	}
 
 	apiID, _ := strconv.Atoi(getEnv("API_ID", "0"))
 	ownerID, _ := strconv.ParseInt(getEnv("OWNER_ID", "0"), 10, 64)
-	
+
 	// Logger ID with proper parsing
 	var loggerID int64
 	loggerIDStr := getEnv("LOGGER_ID", "")
 	if loggerIDStr != "" {
 		loggerID, _ = strconv.ParseInt(loggerIDStr, 10, 64)
 	}
-	
-	// If LOGGER_ID not in .env, use hardcoded value
 	if loggerID == 0 {
 		loggerID = -1003303257249
 	}
@@ -90,9 +89,10 @@ func Load() (*Config, error) {
 		APIID:         int32(apiID),
 		BotToken:      getEnv("BOT_TOKEN", ""),
 		DatabaseURL:   getEnv("DATABASE_URL", ""),
-		StringSession: stringSession, 
+		StringSession: stringSession,
 		LoggerID:      loggerID,
 		OwnerID:       ownerID,
+		StartTime:     time.Now(),
 
 		// Optional
 		BlackImg:        getEnv("BLACK_IMG", "https://telegra.ph/file/2c546060b20dfd7c1ff2d.jpg"),
@@ -117,17 +117,16 @@ func Load() (*Config, error) {
 		DwlDir:   "./downloads/",
 
 		// Initialize runtime maps
-		BannedUsers:  make(map[int64]bool),
-		SudoUsers:    make(map[int64]bool),
-		GodUsers:     make(map[int64]bool),
-		Cache:        make(map[string]interface{}),
-		PlayerCache:  make(map[int64]interface{}),
-		QueueCache:   make(map[int64]interface{}),
-		SongCache:    make(map[string]interface{}),
-		DeleteDict:   make(map[string]interface{}),
+		BannedUsers: make(map[int64]bool),
+		SudoUsers:   make(map[int64]bool),
+		GodUsers:    make(map[int64]bool),
+		Cache:       make(map[string]interface{}),
+		PlayerCache: make(map[int64]interface{}),
+		QueueCache:  make(map[int64]interface{}),
+		SongCache:   make(map[string]interface{}),
+		DeleteDict:  make(map[string]interface{}),
 	}
 
-	// Add owner to god and sudo users
 	if cfg.OwnerID != 0 {
 		cfg.GodUsers[cfg.OwnerID] = true
 		cfg.SudoUsers[cfg.OwnerID] = true
@@ -137,7 +136,10 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// Validate checks if all required fields are present
+// CloseLogging placeholder
+func CloseLogging() {}
+
+// Validate checks required fields
 func (c *Config) Validate() error {
 	if c.APIID == 0 {
 		log.Fatal("❌ API_ID is missing!")
@@ -160,7 +162,6 @@ func (c *Config) Validate() error {
 	if c.OwnerID == 0 {
 		log.Fatal("❌ OWNER_ID is missing!")
 	}
-
 	log.Println("✅ Config validation passed!")
 	return nil
 }
