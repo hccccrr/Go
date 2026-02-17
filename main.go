@@ -92,7 +92,7 @@ func startBot(ctx context.Context, cfg *config.Config) error {
 	}
 	globalDB = db
 
-	// Load all plugins (handlers will be registered automatically)
+	// Load all plugins
 	log.Println(">> Loading handler plugins...")
 	handlers.LoadAllPlugins(client, db)
 
@@ -109,8 +109,6 @@ func startBot(ctx context.Context, cfg *config.Config) error {
 		}
 	} else {
 		log.Println("⚠️  User client not available - NTgCalls disabled")
-		log.Println("   Voice chat features will not work")
-		log.Println("   Add STRING_SESSION to enable voice chat")
 	}
 
 	// Send boot message
@@ -120,7 +118,7 @@ func startBot(ctx context.Context, cfg *config.Config) error {
 	}
 
 	log.Printf("🎵 ShizuMusic [%s] is now online!", version.Info.ShizuMusic)
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	log.Println("✅ Bot Client:   READY")
 	if client.UserClient != nil {
 		log.Println("✅ User Client:  READY")
@@ -133,7 +131,7 @@ func startBot(ctx context.Context, cfg *config.Config) error {
 	} else {
 		log.Println("⚠️  NTgCalls:     DISABLED")
 	}
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	// Keep running
 	for !isShuttingDown {
@@ -141,7 +139,6 @@ func startBot(ctx context.Context, cfg *config.Config) error {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(1 * time.Second):
-			// Heartbeat - check if still alive
 		}
 	}
 
@@ -154,50 +151,45 @@ func shutdownHandler(ctx context.Context, cancel context.CancelFunc) {
 	}
 	isShuttingDown = true
 
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	log.Println("🛑 Shutdown signal received. Stopping ShizuMusic...")
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-	// Stop NTgCalls first (active voice chats)
 	if globalCalls != nil {
 		log.Println(">> Stopping NTgCalls...")
 		globalCalls.Stop()
 		log.Println("✅ NTgCalls stopped")
 	}
 
-	// Stop Telegram clients
 	if globalClient != nil {
 		log.Println(">> Disconnecting Telegram clients...")
 		globalClient.Stop()
 		log.Println("✅ Telegram clients disconnected")
 	}
 
-	// Close database connection
 	if globalDB != nil {
 		log.Println(">> Closing database connection...")
 		globalDB.Close()
 		log.Println("✅ Database connection closed")
 	}
 
-	// Send offline message
 	if globalClient != nil && globalClient.BotClient != nil {
 		offlineMsg := `#STOP
 
 **ShizuMusic Bot is going offline**
 
-**• Version:** ` + version.Info.ShizuMusic + `
-**• Uptime:** ` + version.GetUptimeString()
+- **Version:** ` + version.Info.ShizuMusic + `
+- **Uptime:** ` + version.GetUptimeString()
 
 		if err := globalClient.SendToLogger(offlineMsg, ""); err != nil {
 			log.Printf("⚠️  Failed to send offline message: %v", err)
 		}
 	}
 
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	log.Printf("👋 ShizuMusic [%s] is now offline!", version.Info.ShizuMusic)
-	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-	// Trigger context cancellation
 	cancel()
 }
 
@@ -218,26 +210,26 @@ func formatBootMessage() string {
 		status = "⚠️ LIMITED (No User Client)"
 	}
 
+	vcStatus := "⚠️ Voice Chat (Disabled - No User Client)"
+	if globalClient != nil && globalClient.UserClient != nil {
+		vcStatus = "✅ Voice Chat Streaming"
+	}
+
 	return `#START
 
 **🎵 ShizuMusic Bot is now online!**
 
 **System Information:**
-• **Status:** ` + status + `
-• **Version:** ` + version.Info.ShizuMusic + `
-• **Go Version:** ` + version.Info.GoVersion + `
-• **Gogram:** ` + version.Info.Gogram + `
-• **NTgCalls:** ` + version.Info.NTgCalls + `
-• **Uptime:** ` + version.GetUptimeString() + `
+- **Status:** ` + status + `
+- **Version:** ` + version.Info.ShizuMusic + `
+- **Go Version:** ` + version.Info.GoVersion + `
+- **Gogram:** ` + version.Info.Gogram + `
+- **NTgCalls:** ` + version.Info.NTgCalls + `
+- **Uptime:** ` + version.GetUptimeString() + `
 
 **Features:**
 ✅ Music Playback
 ✅ Queue Management
 ✅ Multi-platform Support
-` + func() string {
-		if globalClient != nil && globalClient.UserClient != nil {
-			return "✅ Voice Chat Streaming"
-		}
-		return "⚠️ Voice Chat (Disabled - No User Client)"
-	}()
+` + vcStatus
 }
