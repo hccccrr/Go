@@ -21,408 +21,307 @@ func NewMakeButtons() *MakeButtons {
 	return &MakeButtons{}
 }
 
-// CloseMarkup returns a close button
-func (mb *MakeButtons) CloseMarkup() *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
-		},
+// helper: callback button
+func cbBtn(text, data string) tg.KeyboardButtonObj {
+	return tg.KeyboardButtonObj{
+		Text: text,
+		Data: []byte(data),
 	}
+}
+
+// helper: url button
+func urlBtn(text, url string) tg.KeyboardButtonUrl {
+	return tg.KeyboardButtonUrl{
+		Text: text,
+		Url:  url,
+	}
+}
+
+// helper: build inline markup from rows of buttons
+func buildMarkup(rows ...[]tg.KeyboardButton) *tg.ReplyInlineMarkup {
+	var keyRows []tg.KeyboardButtonRow
+	for _, row := range rows {
+		keyRows = append(keyRows, tg.KeyboardButtonRow{Buttons: row})
+	}
+	return &tg.ReplyInlineMarkup{Rows: keyRows}
+}
+
+// CloseMarkup returns a close button
+func (mb *MakeButtons) CloseMarkup() *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{cbBtn("🗑", "close")},
+	)
 }
 
 // QueueMarkup returns queue navigation buttons
-func (mb *MakeButtons) QueueMarkup(count, page int) *tg.InlineKeyboardMarkup {
+func (mb *MakeButtons) QueueMarkup(count, page int) *tg.ReplyInlineMarkup {
 	if count != 1 {
-		return &tg.InlineKeyboardMarkup{
-			Rows: []tg.KeyboardButtonRow{
-				{
-					Buttons: []tg.KeyboardButton{
-						{Text: "◂", Data: []byte(fmt.Sprintf("queue|prev|%d", page))},
-						{Text: "🗑", Data: []byte("close")},
-						{Text: "▸", Data: []byte(fmt.Sprintf("queue|next|%d", page))},
-					},
-				},
+		return buildMarkup(
+			[]tg.KeyboardButton{
+				cbBtn("◂", fmt.Sprintf("queue|prev|%d", page)),
+				cbBtn("🗑", "close"),
+				cbBtn("▸", fmt.Sprintf("queue|next|%d", page)),
 			},
-		}
+		)
 	}
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
-		},
-	}
+	return buildMarkup(
+		[]tg.KeyboardButton{cbBtn("🗑", "close")},
+	)
 }
 
 // PlayFavsMarkup returns play favorites buttons
-func (mb *MakeButtons) PlayFavsMarkup(userID int64) *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Audio", Data: []byte(fmt.Sprintf("favsplay|audio|%d", userID))},
-					{Text: "Video", Data: []byte(fmt.Sprintf("favsplay|video|%d", userID))},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte(fmt.Sprintf("favsplay|close|%d", userID))},
-				},
-			},
+func (mb *MakeButtons) PlayFavsMarkup(userID int64) *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			cbBtn("Audio", fmt.Sprintf("favsplay|audio|%d", userID)),
+			cbBtn("Video", fmt.Sprintf("favsplay|video|%d", userID)),
 		},
-	}
+		[]tg.KeyboardButton{
+			cbBtn("🗑", fmt.Sprintf("favsplay|close|%d", userID)),
+		},
+	)
 }
 
 // FavoriteMarkup returns favorites list with navigation
-func (mb *MakeButtons) FavoriteMarkup(count, userID int64, page int, hasMultiplePages, showDelete bool) *tg.InlineKeyboardMarkup {
-	var rows []tg.KeyboardButtonRow
-
-	// Play button
-	rows = append(rows, tg.KeyboardButtonRow{
-		Buttons: []tg.KeyboardButton{
-			{Text: "Play Favorites ❤️", Data: []byte(fmt.Sprintf("myfavs|play|%d|0|0", userID))},
-		},
-	})
-
-	// Delete buttons row (if enabled)
-	if showDelete {
-		rows = append(rows, tg.KeyboardButtonRow{
-			Buttons: []tg.KeyboardButton{
-				{Text: "Delete All ❌", Data: []byte(fmt.Sprintf("delfavs|all|%d", userID))},
-			},
-		})
-	}
-
-	// Navigation row
+func (mb *MakeButtons) FavoriteMarkup(count, userID int64, page int, hasMultiplePages, showDelete bool) *tg.ReplyInlineMarkup {
 	d := 0
 	if showDelete {
 		d = 1
 	}
 
-	if hasMultiplePages {
-		rows = append(rows, tg.KeyboardButtonRow{
-			Buttons: []tg.KeyboardButton{
-				{Text: "◂", Data: []byte(fmt.Sprintf("myfavs|prev|%d|%d|%d", userID, page, d))},
-				{Text: "🗑", Data: []byte(fmt.Sprintf("myfavs|close|%d|%d|%d", userID, page, d))},
-				{Text: "▸", Data: []byte(fmt.Sprintf("myfavs|next|%d|%d|%d", userID, page, d))},
-			},
-		})
-	} else {
-		rows = append(rows, tg.KeyboardButtonRow{
-			Buttons: []tg.KeyboardButton{
-				{Text: "🗑", Data: []byte(fmt.Sprintf("myfavs|close|%d|%d|%d", userID, page, d))},
-			},
+	var rows [][]tg.KeyboardButton
+
+	// Play button
+	rows = append(rows, []tg.KeyboardButton{
+		cbBtn("Play Favorites ❤️", fmt.Sprintf("myfavs|play|%d|0|0", userID)),
+	})
+
+	// Delete button
+	if showDelete {
+		rows = append(rows, []tg.KeyboardButton{
+			cbBtn("Delete All ❌", fmt.Sprintf("delfavs|all|%d", userID)),
 		})
 	}
 
-	return &tg.InlineKeyboardMarkup{Rows: rows}
+	// Navigation
+	if hasMultiplePages {
+		rows = append(rows, []tg.KeyboardButton{
+			cbBtn("◂", fmt.Sprintf("myfavs|prev|%d|%d|%d", userID, page, d)),
+			cbBtn("🗑", fmt.Sprintf("myfavs|close|%d|%d|%d", userID, page, d)),
+			cbBtn("▸", fmt.Sprintf("myfavs|next|%d|%d|%d", userID, page, d)),
+		})
+	} else {
+		rows = append(rows, []tg.KeyboardButton{
+			cbBtn("🗑", fmt.Sprintf("myfavs|close|%d|%d|%d", userID, page, d)),
+		})
+	}
+
+	return buildMarkup(rows...)
 }
 
 // ActiveVCMarkup returns active voice chats navigation
-func (mb *MakeButtons) ActiveVCMarkup(count, page int) *tg.InlineKeyboardMarkup {
+func (mb *MakeButtons) ActiveVCMarkup(count, page int) *tg.ReplyInlineMarkup {
 	if count != 1 {
-		return &tg.InlineKeyboardMarkup{
-			Rows: []tg.KeyboardButtonRow{
-				{
-					Buttons: []tg.KeyboardButton{
-						{Text: "◂", Data: []byte(fmt.Sprintf("activevc|prev|%d", page))},
-						{Text: "🗑", Data: []byte("close")},
-						{Text: "▸", Data: []byte(fmt.Sprintf("activevc|next|%d", page))},
-					},
-				},
+		return buildMarkup(
+			[]tg.KeyboardButton{
+				cbBtn("◂", fmt.Sprintf("activevc|prev|%d", page)),
+				cbBtn("🗑", "close"),
+				cbBtn("▸", fmt.Sprintf("activevc|next|%d", page)),
 			},
-		}
+		)
 	}
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
-		},
-	}
+	return buildMarkup(
+		[]tg.KeyboardButton{cbBtn("🗑", "close")},
+	)
 }
 
 // AuthUsersMarkup returns authorized users navigation
-func (mb *MakeButtons) AuthUsersMarkup(count, page int, randKey string) *tg.InlineKeyboardMarkup {
+func (mb *MakeButtons) AuthUsersMarkup(count, page int, randKey string) *tg.ReplyInlineMarkup {
 	if count != 1 {
-		return &tg.InlineKeyboardMarkup{
-			Rows: []tg.KeyboardButtonRow{
-				{
-					Buttons: []tg.KeyboardButton{
-						{Text: "◂", Data: []byte(fmt.Sprintf("authus|prev|%d|%s", page, randKey))},
-						{Text: "🗑", Data: []byte(fmt.Sprintf("authus|close|%d|%s", page, randKey))},
-						{Text: "▸", Data: []byte(fmt.Sprintf("authus|next|%d|%s", page, randKey))},
-					},
-				},
+		return buildMarkup(
+			[]tg.KeyboardButton{
+				cbBtn("◂", fmt.Sprintf("authus|prev|%d|%s", page, randKey)),
+				cbBtn("🗑", fmt.Sprintf("authus|close|%d|%s", page, randKey)),
+				cbBtn("▸", fmt.Sprintf("authus|next|%d|%s", page, randKey)),
 			},
-		}
+		)
 	}
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte(fmt.Sprintf("authus|close|%d|%s", page, randKey))},
-				},
-			},
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			cbBtn("🗑", fmt.Sprintf("authus|close|%d|%s", page, randKey)),
 		},
-	}
+	)
 }
 
 // PlayerMarkup returns player control buttons
-func (mb *MakeButtons) PlayerMarkup(chatID int64, videoID, username string) *tg.InlineKeyboardMarkup {
+func (mb *MakeButtons) PlayerMarkup(chatID int64, videoID, username string) *tg.ReplyInlineMarkup {
 	if videoID == "telegram" {
-		return &tg.InlineKeyboardMarkup{
-			Rows: []tg.KeyboardButtonRow{
-				{
-					Buttons: []tg.KeyboardButton{
-						{Text: "🎛️", Data: []byte(fmt.Sprintf("controls|%s|%d", videoID, chatID))},
-						{Text: "🗑", Data: []byte("close")},
-					},
-				},
+		return buildMarkup(
+			[]tg.KeyboardButton{
+				cbBtn("🎛️", fmt.Sprintf("controls|%s|%d", videoID, chatID)),
+				cbBtn("🗑", "close"),
 			},
-		}
+		)
 	}
 
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "About Song", URL: fmt.Sprintf("https://t.me/%s?start=song_%s", username, videoID)},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "❤️", Data: []byte(fmt.Sprintf("add_favorite|%s", videoID))},
-					{Text: "🎛️", Data: []byte(fmt.Sprintf("controls|%s|%d", videoID, chatID))},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			urlBtn("About Song", fmt.Sprintf("https://t.me/%s?start=song_%s", username, videoID)),
 		},
-	}
+		[]tg.KeyboardButton{
+			cbBtn("❤️", fmt.Sprintf("add_favorite|%s", videoID)),
+			cbBtn("🎛️", fmt.Sprintf("controls|%s|%d", videoID, chatID)),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("🗑", "close"),
+		},
+	)
 }
 
 // ControlsMarkup returns playback controls
-func (mb *MakeButtons) ControlsMarkup(videoID string, chatID int64) *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "◂◂", Data: []byte(fmt.Sprintf("ctrl|bseek|%d", chatID))},
-					{Text: "⏸", Data: []byte(fmt.Sprintf("ctrl|play|%d", chatID))},
-					{Text: "▸▸", Data: []byte(fmt.Sprintf("ctrl|fseek|%d", chatID))},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "⏹ End", Data: []byte(fmt.Sprintf("ctrl|end|%d", chatID))},
-					{Text: "↻ Replay", Data: []byte(fmt.Sprintf("ctrl|replay|%d", chatID))},
-					{Text: "∞ Loop", Data: []byte(fmt.Sprintf("ctrl|loop|%d", chatID))},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "⏸ Mute", Data: []byte(fmt.Sprintf("ctrl|mute|%d", chatID))},
-					{Text: "⏵ Unmute", Data: []byte(fmt.Sprintf("ctrl|unmute|%d", chatID))},
-					{Text: "⏭ Skip", Data: []byte(fmt.Sprintf("ctrl|skip|%d", chatID))},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🔙", Data: []byte(fmt.Sprintf("player|%s|%d", videoID, chatID))},
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) ControlsMarkup(videoID string, chatID int64) *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			cbBtn("◂◂", fmt.Sprintf("ctrl|bseek|%d", chatID)),
+			cbBtn("⸸", fmt.Sprintf("ctrl|play|%d", chatID)),
+			cbBtn("▸▸", fmt.Sprintf("ctrl|fseek|%d", chatID)),
 		},
-	}
+		[]tg.KeyboardButton{
+			cbBtn("⏹ End", fmt.Sprintf("ctrl|end|%d", chatID)),
+			cbBtn("↻ Replay", fmt.Sprintf("ctrl|replay|%d", chatID)),
+			cbBtn("∞ Loop", fmt.Sprintf("ctrl|loop|%d", chatID)),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("⸸ Mute", fmt.Sprintf("ctrl|mute|%d", chatID)),
+			cbBtn("↵ Unmute", fmt.Sprintf("ctrl|unmute|%d", chatID)),
+			cbBtn("⭭ Skip", fmt.Sprintf("ctrl|skip|%d", chatID)),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("🔙", fmt.Sprintf("player|%s|%d", videoID, chatID)),
+			cbBtn("🗑", "close"),
+		},
+	)
 }
 
 // SongMarkup returns song download buttons
-func (mb *MakeButtons) SongMarkup(randKey, url, key string) *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Visit Youtube", URL: url},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Audio", Data: []byte(fmt.Sprintf("song_dl|adl|%s|%s", key, randKey))},
-					{Text: "Video", Data: []byte(fmt.Sprintf("song_dl|vdl|%s|%s", key, randKey))},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "◂", Data: []byte(fmt.Sprintf("song_dl|prev|%s|%s", key, randKey))},
-					{Text: "▸", Data: []byte(fmt.Sprintf("song_dl|next|%s|%s", key, randKey))},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte(fmt.Sprintf("song_dl|close|%s|%s", key, randKey))},
-				},
-			},
+func (mb *MakeButtons) SongMarkup(randKey, url, key string) *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			urlBtn("Visit Youtube", url),
 		},
-	}
+		[]tg.KeyboardButton{
+			cbBtn("Audio", fmt.Sprintf("song_dl|adl|%s|%s", key, randKey)),
+			cbBtn("Video", fmt.Sprintf("song_dl|vdl|%s|%s", key, randKey)),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("◂", fmt.Sprintf("song_dl|prev|%s|%s", key, randKey)),
+			cbBtn("▸", fmt.Sprintf("song_dl|next|%s|%s", key, randKey)),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("🗑", fmt.Sprintf("song_dl|close|%s|%s", key, randKey)),
+		},
+	)
 }
 
 // SongDetailsMarkup returns song details buttons
-func (mb *MakeButtons) SongDetailsMarkup(url, channelURL string) *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🎥", URL: url},
-					{Text: "📺", URL: channelURL},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) SongDetailsMarkup(url, channelURL string) *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			urlBtn("🎥", url),
+			urlBtn("📺", channelURL),
 		},
-	}
+		[]tg.KeyboardButton{
+			cbBtn("🗑", "close"),
+		},
+	)
 }
 
 // SourceMarkup returns source code and support buttons
-func (mb *MakeButtons) SourceMarkup() *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Github ❤️", URL: "https://github.com/The-HellBot"},
-					{Text: "Repo 📦", URL: "https://github.com/The-HellBot/Music"},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Under HellBot Network { 🇮🇳 }", URL: "https://t.me/HellBot_Networks"},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Support 🎙️", URL: "https://t.me/HellBot_Chats"},
-					{Text: "Updates 📣", URL: "https://t.me/Its_HellBot"},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🔙", Data: []byte("help|start")},
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) SourceMarkup() *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			urlBtn("Github ❤️", "https://github.com/The-HellBot"),
+			urlBtn("Repo 📦", "https://github.com/The-HellBot/Music"),
 		},
-	}
+		[]tg.KeyboardButton{
+			urlBtn("Under HellBot Network { 🇮🇳 }", "https://t.me/HellBot_Networks"),
+		},
+		[]tg.KeyboardButton{
+			urlBtn("Support 🎙️", "https://t.me/HellBot_Chats"),
+			urlBtn("Updates 📣", "https://t.me/Its_HellBot"),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("🔙", "help|start"),
+			cbBtn("🗑", "close"),
+		},
+	)
 }
 
 // StartMarkup returns start button for groups
-func (mb *MakeButtons) StartMarkup(username string) *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Start Me 🎵", URL: fmt.Sprintf("https://t.me/%s?start=start", username)},
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) StartMarkup(username string) *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			urlBtn("Start Me 🎵", fmt.Sprintf("https://t.me/%s?start=start", username)),
+			cbBtn("🗑", "close"),
 		},
-	}
+	)
 }
 
 // StartPMMarkup returns start menu buttons for PM
-func (mb *MakeButtons) StartPMMarkup(username string) *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Help ⚙️", Data: []byte("help|back")},
-					{Text: "Source 📦", Data: []byte("source")},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Add Me To Group 👥", URL: fmt.Sprintf("https://t.me/%s?startgroup=true", username)},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) StartPMMarkup(username string) *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			cbBtn("Help ⚙️", "help|back"),
+			cbBtn("Source 📦", "source"),
 		},
-	}
+		[]tg.KeyboardButton{
+			urlBtn("Add Me To Group 👥", fmt.Sprintf("https://t.me/%s?startgroup=true", username)),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("🗑", "close"),
+		},
+	)
 }
 
 // HelpGCMarkup returns help button for groups
-func (mb *MakeButtons) HelpGCMarkup(username string) *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "Get Help ❓", URL: fmt.Sprintf("https://t.me/%s?start=help", username)},
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) HelpGCMarkup(username string) *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			urlBtn("Get Help ❓", fmt.Sprintf("https://t.me/%s?start=help", username)),
+			cbBtn("🗑", "close"),
 		},
-	}
+	)
 }
 
 // HelpPMMarkup returns help menu buttons
-func (mb *MakeButtons) HelpPMMarkup() *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "➊ Admins", Data: []byte("help|admin")},
-					{Text: "➋ Users", Data: []byte("help|user")},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "➌ Sudos", Data: []byte("help|sudo")},
-					{Text: "➍ Others", Data: []byte("help|others")},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "➎ Owner", Data: []byte("help|owner")},
-				},
-			},
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🔙", Data: []byte("help|start")},
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) HelpPMMarkup() *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			cbBtn("➊ Admins", "help|admin"),
+			cbBtn("➋ Users", "help|user"),
 		},
-	}
+		[]tg.KeyboardButton{
+			cbBtn("➌ Sudos", "help|sudo"),
+			cbBtn("➍ Others", "help|others"),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("➎ Owner", "help|owner"),
+		},
+		[]tg.KeyboardButton{
+			cbBtn("🔙", "help|start"),
+			cbBtn("🗑", "close"),
+		},
+	)
 }
 
 // HelpBack returns back button for help
-func (mb *MakeButtons) HelpBack() *tg.InlineKeyboardMarkup {
-	return &tg.InlineKeyboardMarkup{
-		Rows: []tg.KeyboardButtonRow{
-			{
-				Buttons: []tg.KeyboardButton{
-					{Text: "🔙", Data: []byte("help|back")},
-					{Text: "🗑", Data: []byte("close")},
-				},
-			},
+func (mb *MakeButtons) HelpBack() *tg.ReplyInlineMarkup {
+	return buildMarkup(
+		[]tg.KeyboardButton{
+			cbBtn("🔙", "help|back"),
+			cbBtn("🗑", "close"),
 		},
-	}
+	)
 }
 
 // Global instance
