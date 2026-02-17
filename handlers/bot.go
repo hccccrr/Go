@@ -10,9 +10,6 @@ import (
 	"shizumusic/helpers"
 )
 
-// TEXTS templates from helpers
-var TEXTS = helpers.TextTemplates
-
 // init registers the basic bot handlers plugin
 func init() {
 	RegisterPlugin("basic_commands", func(client *core.Client, db *core.Database) {
@@ -32,76 +29,93 @@ func init() {
 }
 
 func handleStart(m *tg.NewMessage, client *core.Client, db *core.Database) error {
-	if config.Cfg.IsBanned(m.From.ID) {
+	sender, err := m.GetSender()
+	if err != nil || sender == nil {
 		return nil
 	}
-	if m.IsPrivate {
+	if config.Cfg.IsBanned(sender.ID) {
+		return nil
+	}
+	if m.IsPrivate() {
 		return sendStartPM(m, client)
 	}
-	if m.IsGroup {
+	if m.IsGroup() {
 		return sendStartGC(m, client)
 	}
 	return nil
 }
 
 func handleHelp(m *tg.NewMessage, client *core.Client) error {
-	if config.Cfg.IsBanned(m.From.ID) {
+	sender, err := m.GetSender()
+	if err != nil || sender == nil {
 		return nil
 	}
-	if m.IsPrivate {
+	if config.Cfg.IsBanned(sender.ID) {
+		return nil
+	}
+	if m.IsPrivate() {
 		return sendHelpPM(m, client)
 	}
-	if m.IsGroup {
+	if m.IsGroup() {
 		return sendHelpGC(m, client)
 	}
 	return nil
 }
 
 func handlePing(m *tg.NewMessage, client *core.Client) error {
-	if config.Cfg.IsBanned(m.From.ID) {
+	sender, err := m.GetSender()
+	if err != nil || sender == nil {
+		return nil
+	}
+	if config.Cfg.IsBanned(sender.ID) {
 		return nil
 	}
 	start := time.Now()
 	msg, _ := m.Reply("Pong!")
 	elapsed := time.Since(start).Milliseconds()
 	uptime := formatUptime(time.Since(config.Cfg.StartTime))
-	pingText := fmt.Sprintf(TEXTS.PingReply(), elapsed, uptime, "50")
+	pingText := fmt.Sprintf(helpers.TextTemplates.PingReply(), elapsed, uptime, "50")
 	msg.Edit(pingText)
 	return nil
 }
 
 func handleSysinfo(m *tg.NewMessage) error {
-	if config.Cfg.IsBanned(m.From.ID) {
+	sender, err := m.GetSender()
+	if err != nil || sender == nil {
+		return nil
+	}
+	if config.Cfg.IsBanned(sender.ID) {
 		return nil
 	}
 	uptime := formatUptime(time.Since(config.Cfg.StartTime))
 	me, _ := m.Client.GetMe()
-	text := fmt.Sprintf(TEXTS.System(), 4, "25%", "35%", "45%", uptime, fmt.Sprintf("@%s", me.Username))
+	text := fmt.Sprintf(helpers.TextTemplates.System(), 4, "25%", "35%", "45%", uptime, fmt.Sprintf("@%s", me.Username))
 	m.Reply(text)
 	return nil
 }
 
 func sendStartPM(m *tg.NewMessage, client *core.Client) error {
+	sender, _ := m.GetSender()
 	me, _ := client.BotClient.GetMe()
-	text := fmt.Sprintf(TEXTS.StartPM(), m.From.FirstName, me.FirstName, me.Username)
+	text := fmt.Sprintf(helpers.TextTemplates.StartPM(), sender.FirstName, me.FirstName, me.Username)
 	m.Reply(text)
 	return nil
 }
 
 func sendStartGC(m *tg.NewMessage, client *core.Client) error {
-	m.Reply(TEXTS.StartGC())
+	m.Reply(helpers.TextTemplates.StartGC())
 	return nil
 }
 
 func sendHelpPM(m *tg.NewMessage, client *core.Client) error {
 	me, _ := client.BotClient.GetMe()
-	text := fmt.Sprintf(TEXTS.HelpPM(), fmt.Sprintf("@%s", me.Username))
+	text := fmt.Sprintf(helpers.TextTemplates.HelpPM(), fmt.Sprintf("@%s", me.Username))
 	m.Reply(text)
 	return nil
 }
 
 func sendHelpGC(m *tg.NewMessage, client *core.Client) error {
-	m.Reply(TEXTS.HelpGC())
+	m.Reply(helpers.TextTemplates.HelpGC())
 	return nil
 }
 
