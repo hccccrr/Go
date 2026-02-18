@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"shizumusic/helpers"
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -28,7 +30,7 @@ var (
 // LoadAPIURL loads API URL from remote source
 func LoadAPIURL(ctx context.Context) error {
 	client := &http.Client{Timeout: 10 * time.Second}
-	
+
 	resp, err := client.Get("https://pastebin.com/raw/rLsBhAQa")
 	if err != nil {
 		apiURLMutex.Lock()
@@ -64,7 +66,7 @@ func LoadAPIURL(ctx context.Context) error {
 func GetAPIURL() string {
 	apiURLMutex.RLock()
 	defer apiURLMutex.RUnlock()
-	
+
 	if yourAPIURL == "" {
 		return fallbackAPIURL
 	}
@@ -83,26 +85,21 @@ func DownloadSong(ctx context.Context, link string) (string, error) {
 		apiURL = GetAPIURL()
 	}
 
-	// Extract video ID
 	videoID := ExtractVideoIDFromLink(link)
 	if videoID == "" || len(videoID) < 3 {
 		return "", fmt.Errorf("invalid video ID")
 	}
 
-	// Setup download directory
 	downloadDir := "downloads"
 	os.MkdirAll(downloadDir, 0755)
 	filePath := filepath.Join(downloadDir, videoID+".mp3")
 
-	// Return if already downloaded
 	if _, err := os.Stat(filePath); err == nil {
 		return filePath, nil
 	}
 
-	// Create HTTP client
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	// Request download token
 	reqURL := fmt.Sprintf("%s/download?url=%s&type=audio", apiURL, videoID)
 	resp, err := client.Get(reqURL)
 	if err != nil {
@@ -125,7 +122,6 @@ func DownloadSong(ctx context.Context, link string) (string, error) {
 		return "", fmt.Errorf("no download token received")
 	}
 
-	// Stream and save file
 	streamURL := fmt.Sprintf("%s/stream/%s?type=audio", apiURL, videoID)
 	req, err := http.NewRequestWithContext(ctx, "GET", streamURL, nil)
 	if err != nil {
@@ -144,7 +140,6 @@ func DownloadSong(ctx context.Context, link string) (string, error) {
 		return "", fmt.Errorf("stream failed: status %d", streamResp.StatusCode)
 	}
 
-	// Save to file
 	outFile, err := os.Create(filePath)
 	if err != nil {
 		return "", err
@@ -152,11 +147,7 @@ func DownloadSong(ctx context.Context, link string) (string, error) {
 	defer outFile.Close()
 
 	_, err = io.Copy(outFile, streamResp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return filePath, nil
+	return filePath, err
 }
 
 // DownloadVideo downloads video from YouTube using API
@@ -167,26 +158,21 @@ func DownloadVideo(ctx context.Context, link string) (string, error) {
 		apiURL = GetAPIURL()
 	}
 
-	// Extract video ID
 	videoID := ExtractVideoIDFromLink(link)
 	if videoID == "" || len(videoID) < 3 {
 		return "", fmt.Errorf("invalid video ID")
 	}
 
-	// Setup download directory
 	downloadDir := "downloads"
 	os.MkdirAll(downloadDir, 0755)
 	filePath := filepath.Join(downloadDir, videoID+".mp4")
 
-	// Return if already downloaded
 	if _, err := os.Stat(filePath); err == nil {
 		return filePath, nil
 	}
 
-	// Create HTTP client
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	// Request download token
 	reqURL := fmt.Sprintf("%s/download?url=%s&type=video", apiURL, videoID)
 	resp, err := client.Get(reqURL)
 	if err != nil {
@@ -209,7 +195,6 @@ func DownloadVideo(ctx context.Context, link string) (string, error) {
 		return "", fmt.Errorf("no download token received")
 	}
 
-	// Stream and save file
 	streamURL := fmt.Sprintf("%s/stream/%s?type=video", apiURL, videoID)
 	req, err := http.NewRequestWithContext(ctx, "GET", streamURL, nil)
 	if err != nil {
@@ -228,7 +213,6 @@ func DownloadVideo(ctx context.Context, link string) (string, error) {
 		return "", fmt.Errorf("stream failed: status %d", streamResp.StatusCode)
 	}
 
-	// Save to file
 	outFile, err := os.Create(filePath)
 	if err != nil {
 		return "", err
@@ -236,16 +220,11 @@ func DownloadVideo(ctx context.Context, link string) (string, error) {
 	defer outFile.Close()
 
 	_, err = io.Copy(outFile, streamResp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return filePath, nil
+	return filePath, err
 }
 
 // ExtractVideoIDFromLink extracts video ID from YouTube URL
 func ExtractVideoIDFromLink(link string) string {
-	// Handle different URL formats
 	patterns := []string{
 		`(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})`,
 		`^([a-zA-Z0-9_-]{11})$`,
@@ -259,16 +238,13 @@ func ExtractVideoIDFromLink(link string) string {
 		}
 	}
 
-	// Try extracting from query parameter
 	if strings.Contains(link, "v=") {
 		parts := strings.Split(link, "v=")
 		if len(parts) > 1 {
-			videoID := strings.Split(parts[1], "&")[0]
-			return videoID
+			return strings.Split(parts[1], "&")[0]
 		}
 	}
 
-	// Return as-is if it looks like a video ID
 	if len(link) == 11 {
 		return link
 	}
@@ -292,8 +268,6 @@ func NewYouTubeHandler() *YouTubeHandler {
 	}
 }
 
-
-
 // Download downloads audio/video from YouTube
 func (y *YouTubeHandler) Download(ctx context.Context, link string, isVideoID, isVideo bool) (string, error) {
 	ytURL := link
@@ -304,7 +278,6 @@ func (y *YouTubeHandler) Download(ctx context.Context, link string, isVideoID, i
 	var filePath string
 	var err error
 
-	// Try API download first
 	if isVideo {
 		filePath, err = DownloadVideo(ctx, ytURL)
 	} else {
@@ -312,7 +285,6 @@ func (y *YouTubeHandler) Download(ctx context.Context, link string, isVideoID, i
 	}
 
 	if err != nil {
-		// Fallback to yt-dlp
 		return y.downloadFallback(ctx, ytURL, isVideo)
 	}
 
@@ -353,62 +325,62 @@ func (y *YouTubeHandler) downloadFallback(ctx context.Context, ytURL string, isV
 		return "", fmt.Errorf("yt-dlp failed: %w", err)
 	}
 
-	filePath := filepath.Join(y.downloadDir, videoID+"."+ext)
-	return filePath, nil
+	return filepath.Join(y.downloadDir, videoID+"."+ext), nil
 }
 
-// GetData gets video information from YouTube
+// GetData searches YouTube and returns video info
+// Uses helpers.SearchYouTube (YouTube scraper) under the hood
 func (y *YouTubeHandler) GetData(ctx context.Context, query string, single bool, limit int) ([]VideoInfo, error) {
-	// This would use YouTube search API or scraping
-	// For now, return placeholder
-	// In production, implement proper YouTube search
-	return []VideoInfo{}, nil
-}
-
-// FormatLink formats a link from video ID or URL
-func (y *YouTubeHandler) FormatLink(link string, isVideoID bool) string {
-	if isVideoID {
-		return fmt.Sprintf("https://www.youtube.com/watch?v=%s", link)
+	if limit <= 0 {
+		limit = 1
 	}
-	return link
-}
 
-// ShellCmd executes a shell command
-func ShellCmd(ctx context.Context, command string) (string, error) {
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
-	output, err := cmd.CombinedOutput()
-	return string(output), err
-}
-
-// GetLyrics gets song lyrics (placeholder)
-func (y *YouTubeHandler) GetLyrics(ctx context.Context, song, artist string) (map[string]string, error) {
-	// In production, integrate with Genius API or similar
-	return map[string]string{
-		"title":  song,
-		"lyrics": "Lyrics not available",
-		"image":  "",
-	}, nil
-}
-
-// Cleanup removes downloaded files
-func (y *YouTubeHandler) Cleanup(filePath string) error {
-	if filePath != "" && strings.HasPrefix(filePath, y.downloadDir) {
-		return os.Remove(filePath)
+	results, err := helpers.SearchYouTube(query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search failed: %w", err)
 	}
-	return nil
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no results found for: %s", query)
+	}
+
+	var videos []VideoInfo
+	for _, r := range results {
+		if r.ID == "" {
+			continue
+		}
+
+		thumbnail := ""
+		if len(r.Thumbnails) > 0 {
+			thumbnail = r.Thumbnails[len(r.Thumbnails)-1]
+		}
+
+		videos = append(videos, VideoInfo{
+			ID:        r.ID,
+			Title:     r.Title,
+			Duration:  r.Duration,
+			Channel:   r.Channel,
+			Views:     helpers.FormatViews(r.Views),
+			Link:      fmt.Sprintf("https://www.youtube.com/watch?v=%s", r.ID),
+			Thumbnail: thumbnail,
+		})
+
+		if single {
+			break
+		}
+	}
+
+	if len(videos) == 0 {
+		return nil, fmt.Errorf("no valid results found")
+	}
+
+	return videos, nil
 }
 
-// CleanupAll removes all files in download directory
-func (y *YouTubeHandler) CleanupAll() error {
-	return os.RemoveAll(y.downloadDir)
-}
-
-// GetVideoInfo gets detailed video information
+// GetVideoInfo gets detailed video information using yt-dlp
 func (y *YouTubeHandler) GetVideoInfo(ctx context.Context, videoID string) (*VideoInfo, error) {
-	// Use yt-dlp to get info
 	cmd := exec.CommandContext(ctx, "yt-dlp", "-j", "--no-warnings",
 		fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID))
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get video info: %w", err)
@@ -438,6 +410,43 @@ func (y *YouTubeHandler) GetVideoInfo(ctx context.Context, videoID string) (*Vid
 	}, nil
 }
 
+// FormatLink formats a link from video ID or URL
+func (y *YouTubeHandler) FormatLink(link string, isVideoID bool) string {
+	if isVideoID {
+		return fmt.Sprintf("https://www.youtube.com/watch?v=%s", link)
+	}
+	return link
+}
+
+// ShellCmd executes a shell command
+func ShellCmd(ctx context.Context, command string) (string, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+// GetLyrics gets song lyrics (placeholder)
+func (y *YouTubeHandler) GetLyrics(ctx context.Context, song, artist string) (map[string]string, error) {
+	return map[string]string{
+		"title":  song,
+		"lyrics": "Lyrics not available",
+		"image":  "",
+	}, nil
+}
+
+// Cleanup removes a downloaded file
+func (y *YouTubeHandler) Cleanup(filePath string) error {
+	if filePath != "" && strings.HasPrefix(filePath, y.downloadDir) {
+		return os.Remove(filePath)
+	}
+	return nil
+}
+
+// CleanupAll removes all files in download directory
+func (y *YouTubeHandler) CleanupAll() error {
+	return os.RemoveAll(y.downloadDir)
+}
+
 // IsPlaylistURL checks if URL is a playlist
 func IsPlaylistURL(url string) bool {
 	return strings.Contains(url, "playlist?list=") || strings.Contains(url, "&list=")
@@ -453,10 +462,9 @@ func ExtractPlaylistID(url string) string {
 	return ""
 }
 
-// Global YouTube handler
+// Global YouTube handler instance
 var YTube = NewYouTubeHandler()
 
-// Initialize API URL on package load
 func init() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
