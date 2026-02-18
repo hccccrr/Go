@@ -10,7 +10,6 @@ import (
 	"shizumusic/ntgcalls"
 )
 
-// Calls handles voice chat operations
 type Calls struct {
 	client     *tg.Client
 	binding    *ntgcalls.Binding
@@ -49,7 +48,6 @@ func NewCalls(client *tg.Client) *Calls {
 	if err != nil {
 		log.Fatal("Failed to create NTgCalls binding:", err)
 	}
-
 	return &Calls{
 		client:             client,
 		binding:            binding,
@@ -80,7 +78,6 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 			ChannelCount:  2,
 		},
 	}
-
 	if video {
 		mediaDesc.Video = &ntgcalls.VideoDescription{
 			InputMode: ntgcalls.InputModeFile,
@@ -90,7 +87,6 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 			Fps:       24,
 		}
 	}
-
 	return c.connectCall(chatID, mediaDesc, "")
 }
 
@@ -136,27 +132,20 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 		return fmt.Errorf("failed to set stream sources: %w", err)
 	}
 
-	// Get the InputGroupCall object
-	inputCall, err := c.GetInputGroupCall(chatID)
+	// InputGroupCall is an interface in gogram - get it directly
+	groupCall, err := c.GetInputGroupCall(chatID)
 	if err != nil {
 		c.binding.Stop(chatID)
 		return fmt.Errorf("failed to get group call: %w", err)
 	}
 
-	// inputCall is *tg.InputGroupCall (pointer) - use it directly
-	groupCallPtr, ok := inputCall.(*tg.InputGroupCall)
-	if !ok || groupCallPtr == nil {
-		c.binding.Stop(chatID)
-		return fmt.Errorf("invalid group call object (type: %T)", inputCall)
-	}
-
-	log.Printf(">> Joining VC in chat %d, call AccessHash: %d", chatID, groupCallPtr.AccessHash)
+	log.Printf(">> Joining VC in chat %d, call type: %T", chatID, groupCall)
 
 	resultParams := `{"transport": null}`
 	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Muted:        false,
 		VideoStopped: mediaDesc.Video == nil,
-		Call:         groupCallPtr, // Pass pointer directly
+		Call:         groupCall, // tg.InputGroupCall interface - pass as-is
 		Params:       &tg.DataJson{Data: jsonParams},
 	})
 	if err != nil {
@@ -185,8 +174,8 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 	}
 }
 
-// GetInputGroupCall gets InputGroupCall for the chat
-func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
+// GetInputGroupCall returns tg.InputGroupCall interface for the chat
+func (c *Calls) GetInputGroupCall(chatID int64) (tg.InputGroupCall, error) {
 	peer, err := c.client.ResolvePeer(chatID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve peer (chatID: %d): %w", chatID, err)
@@ -212,7 +201,7 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
 		}
 
-		log.Printf(">> Found group call: ID=%d, AccessHash=%d", fullChan.Call.ID, fullChan.Call.AccessHash)
+		log.Printf(">> Found group call for channel peer")
 		return fullChan.Call, nil
 
 	case *tg.InputPeerChat:
@@ -229,7 +218,7 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
 		}
 
-		log.Printf(">> Found group call: ID=%d, AccessHash=%d", chatFull.Call.ID, chatFull.Call.AccessHash)
+		log.Printf(">> Found group call for chat peer")
 		return chatFull.Call, nil
 
 	default:
