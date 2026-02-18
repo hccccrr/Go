@@ -90,12 +90,9 @@ func trackUserMessage(m *tg.NewMessage, sender *tg.UserObj, db *core.Database) e
 		return nil
 	}
 
-	userID := sender.ID
-	userName := sender.FirstName
-
-	exists, _ := db.IsUserExist(userID)
+	exists, _ := db.IsUserExist(sender.ID)
 	if !exists {
-		db.AddUser(userID, userName)
+		db.AddUser(sender.ID, sender.FirstName)
 	}
 
 	return nil
@@ -139,28 +136,28 @@ func handleMsgCount(m *tg.NewMessage, db *core.Database) error {
 
 func handleResetSpam(client *core.Client, db *core.Database) core.HandlerFunc {
 	return func(m *tg.NewMessage) error {
-		if m.ReplyToMsgID == 0 {
+		// ReplyToMsgID is a method in gogram
+		replyID := m.ReplyToMsgID()
+		if replyID == 0 {
 			_, _ = m.Reply("❌ Reply to a user's message to reset their spam cooldown!")
 			return nil
 		}
 
-		replied, err := client.BotClient.GetMessages(m.ChatID(), []int32{int32(m.ReplyToMsgID)})
-		if err != nil || len(replied) == 0 {
+		// Get replied message using Reply() which fetches the replied-to message
+		repliedMsg, err := m.GetReplyMessage()
+		if err != nil || repliedMsg == nil {
 			_, _ = m.Reply("Failed to get replied message!")
 			return nil
 		}
 
-		replyMsg := replied[0]
-		replyFrom := replyMsg.Sender()
-		if replyFrom == nil {
+		sender, err := repliedMsg.GetSender()
+		if err != nil || sender == nil {
 			_, _ = m.Reply("Cannot reset spam for this user!")
 			return nil
 		}
 
-		if user, ok := replyFrom.(*tg.UserObj); ok {
-			mention := fmt.Sprintf("[%s](tg://user?id=%d)", user.FirstName, user.ID)
-			_, _ = m.Reply(fmt.Sprintf("✅ Spam cooldown reset for %s!", mention))
-		}
+		mention := fmt.Sprintf("[%s](tg://user?id=%d)", sender.FirstName, sender.ID)
+		_, _ = m.Reply(fmt.Sprintf("✅ Spam cooldown reset for %s!", mention))
 
 		return nil
 	}
