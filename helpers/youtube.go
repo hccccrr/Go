@@ -22,6 +22,7 @@ type YouTubeVideo struct {
 	Views       string   `json:"views"`
 	PublishTime string   `json:"publish_time"`
 	URLSuffix   string   `json:"url_suffix"`
+	Link        string   `json:"link"`
 }
 
 // YouTubeSearch handles YouTube video searches
@@ -77,7 +78,6 @@ func (ys *YouTubeSearch) fetchPage(reqURL string) (string, error) {
 			return "", err
 		}
 
-		// Critical: YouTube blocks requests without proper headers
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -110,13 +110,10 @@ func (ys *YouTubeSearch) fetchPage(reqURL string) (string, error) {
 
 // parseHTML extracts video data from YouTube page HTML
 func (ys *YouTubeSearch) parseHTML(response string) ([]YouTubeVideo, error) {
-	// Method 1: Extract via ytInitialData JSON
 	videos, err := ys.parseViaJSON(response)
 	if err == nil && len(videos) > 0 {
 		return videos, nil
 	}
-
-	// Method 2: Fallback - regex on videoId directly
 	return ys.parseViaRegex(response)
 }
 
@@ -125,7 +122,6 @@ func (ys *YouTubeSearch) parseViaJSON(response string) ([]YouTubeVideo, error) {
 	startMarker := "var ytInitialData = "
 	start := strings.Index(response, startMarker)
 	if start == -1 {
-		// Try alternative marker
 		startMarker = "ytInitialData = "
 		start = strings.Index(response, startMarker)
 		if start == -1 {
@@ -134,7 +130,6 @@ func (ys *YouTubeSearch) parseViaJSON(response string) ([]YouTubeVideo, error) {
 	}
 	start += len(startMarker)
 
-	// Find the matching closing brace
 	jsonStr := extractJSON(response[start:])
 	if jsonStr == "" {
 		return nil, fmt.Errorf("could not extract JSON")
@@ -145,7 +140,6 @@ func (ys *YouTubeSearch) parseViaJSON(response string) ([]YouTubeVideo, error) {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	// Navigate JSON tree safely
 	videoRenderers := extractVideoRenderers(data)
 	if len(videoRenderers) == 0 {
 		return nil, fmt.Errorf("no video renderers found")
@@ -251,7 +245,6 @@ func extractJSON(s string) string {
 func extractVideoRenderers(data map[string]interface{}) []map[string]interface{} {
 	var renderers []map[string]interface{}
 
-	// Try standard search results path
 	try := func(path ...string) []interface{} {
 		var cur interface{} = data
 		for _, key := range path {
@@ -267,7 +260,6 @@ func extractVideoRenderers(data map[string]interface{}) []map[string]interface{}
 		return nil
 	}
 
-	// Path 1: standard search
 	sections := try("contents", "twoColumnSearchResultsRenderer", "primaryContents", "sectionListRenderer", "contents")
 	for _, section := range sections {
 		sMap, ok := section.(map[string]interface{})
@@ -333,6 +325,10 @@ func (ys *YouTubeSearch) extractVideoData(vr map[string]interface{}) YouTubeVide
 	}
 	video.URLSuffix = getString(vr, "navigationEndpoint", "commandMetadata", "webCommandMetadata", "url")
 
+	if video.ID != "" {
+		video.Link = fmt.Sprintf("https://www.youtube.com/watch?v=%s", video.ID)
+	}
+
 	// Thumbnails
 	if thumb, ok := vr["thumbnail"].(map[string]interface{}); ok {
 		if thumbs, ok := thumb["thumbnails"].([]interface{}); ok {
@@ -344,10 +340,6 @@ func (ys *YouTubeSearch) extractVideoData(vr map[string]interface{}) YouTubeVide
 				}
 			}
 		}
-	}
-
-	if video.ID != "" {
-		video.Link = fmt.Sprintf("https://www.youtube.com/watch?v=%s", video.ID)
 	}
 
 	return video
