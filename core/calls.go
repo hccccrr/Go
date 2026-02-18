@@ -81,6 +81,18 @@ func (c *Calls) Start() error {
 	return nil
 }
 
+func (c *Calls) getSelfPeer() (tg.InputPeer, error) {
+	me, err := c.client.GetMe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get self user: %w", err)
+	}
+	peer, err := c.client.ResolvePeer(me.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve self peer: %w", err)
+	}
+	return peer, nil
+}
+
 func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 	groupCall, err := c.GetInputGroupCall(chatID)
 	if err != nil {
@@ -93,8 +105,15 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 		return fmt.Errorf("failed to create call params: %w", err)
 	}
 
+	// Resolve self peer to use as JoinAs
+	joinAs, err := c.getSelfPeer()
+	if err != nil {
+		return fmt.Errorf("failed to resolve joinAs peer: %w", err)
+	}
+
 	log.Printf(">> Joining VC - chatID: %d, file: %s, video: %v", chatID, filePath, video)
 	log.Printf(">> Join params: %s", joinParams)
+	log.Printf(">> JoinAs peer type: %T", joinAs)
 
 	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Muted:        false,
@@ -129,7 +148,9 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 			Fps:       24,
 		}
 	}
-	c.binding.SetStreamSources(chatID, ntgcalls.CaptureStream, mediaDesc)
+	if err := c.binding.SetStreamSources(chatID, ntgcalls.CaptureStream, mediaDesc); err != nil {
+		log.Printf(">> Warning: failed to set stream sources: %v", err)
+	}
 
 	// Track session
 	c.activeSessionsMu.Lock()
