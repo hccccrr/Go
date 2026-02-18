@@ -12,23 +12,23 @@ import (
 
 // Calls handles voice chat operations
 type Calls struct {
-	client    *tg.Client
-	binding   *ntgcalls.Binding
-	audience  map[int64]int
+	client     *tg.Client
+	binding    *ntgcalls.Binding
+	audience   map[int64]int
 	audienceMu sync.RWMutex
-	
+
 	// P2P call configs
 	p2pConfigs      map[int64]*P2PConfig
 	p2pConfigsMutex sync.RWMutex
-	
+
 	// Input calls
 	inputCalls      map[int64]interface{}
 	inputCallsMutex sync.RWMutex
-	
+
 	// Wait channels for connections
 	waitConnect      map[int64]chan error
 	waitConnectMutex sync.Mutex
-	
+
 	// Pending connections
 	pendingConnections      map[int64]*PendingConnection
 	pendingConnectionsMutex sync.Mutex
@@ -71,25 +71,24 @@ func NewCalls(client *tg.Client) *Calls {
 // Start initializes NTgCalls
 func (c *Calls) Start() error {
 	log.Println(">> Booting NTgCalls client...")
-	
+
 	if err := c.binding.Start(); err != nil {
 		return fmt.Errorf("failed to start NTgCalls: %w", err)
 	}
-	
+
 	log.Println(">> NTgCalls client booted!")
 	return nil
 }
 
 // JoinVC joins a voice chat
 func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
-	// Create media description
 	mediaDesc := ntgcalls.MediaDescription{
 		Audio: &ntgcalls.AudioDescription{
-			InputMode:   ntgcalls.InputModeFile,
-			Input:       filePath,
-			SampleRate:  48000,
+			InputMode:     ntgcalls.InputModeFile,
+			Input:         filePath,
+			SampleRate:    48000,
 			BitsPerSample: 16,
-			ChannelCount: 2,
+			ChannelCount:  2,
 		},
 	}
 
@@ -103,7 +102,6 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 		}
 	}
 
-	// Connect to call
 	return c.connectCall(chatID, mediaDesc, "")
 }
 
@@ -141,9 +139,9 @@ func (c *Calls) GetPing() int64 {
 	return c.binding.GetPing()
 }
 
-// connectCall connects to a call (group or P2P)
+// connectCall connects to a voice chat
+// Music bot sirf group/supergroup chats me kaam karta hai - P2P nahi
 func (c *Calls) connectCall(chatID int64, mediaDesc ntgcalls.MediaDescription, jsonParams string) error {
-	// Create wait channel
 	c.waitConnectMutex.Lock()
 	waitChan := make(chan error)
 	c.waitConnect[chatID] = waitChan
@@ -155,40 +153,36 @@ func (c *Calls) connectCall(chatID int64, mediaDesc ntgcalls.MediaDescription, j
 		c.waitConnectMutex.Unlock()
 	}()
 
-	if chatID >= 0 {
-		// P2P call (private chat)
-		return c.handleP2PCall(chatID, mediaDesc)
-	}
-
-	// Group call
+	// Always route to group call handler
+	// Music bots only work in groups/supergroups (negative chatIDs)
 	return c.handleGroupCall(chatID, mediaDesc, jsonParams, waitChan)
 }
 
 // handleGroupCall handles group voice chat connection
 func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescription, jsonParams string, waitChan chan error) error {
 	var err error
-	
+
 	// Create call
 	jsonParams, err = c.binding.CreateCall(chatID)
 	if err != nil {
 		c.binding.Stop(chatID)
-		return err
+		return fmt.Errorf("failed to create call: %w", err)
 	}
 
 	// Set stream sources
 	if err := c.binding.SetStreamSources(chatID, ntgcalls.CaptureStream, mediaDesc); err != nil {
 		c.binding.Stop(chatID)
-		return err
+		return fmt.Errorf("failed to set stream sources: %w", err)
 	}
 
 	// Get input group call
 	inputGroupCall, err := c.GetInputGroupCall(chatID)
 	if err != nil {
 		c.binding.Stop(chatID)
-		return err
+		return fmt.Errorf("failed to get group call: %w", err)
 	}
 
-	// Type assert to proper InputGroupCall type
+	// Type assert to InputGroupCall
 	groupCall, ok := inputGroupCall.(tg.InputGroupCall)
 	if !ok {
 		c.binding.Stop(chatID)
@@ -200,14 +194,14 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Muted:        false,
 		VideoStopped: mediaDesc.Video == nil,
-		Call:         groupCall, // Use type-asserted value
-		Params: &tg.DataJson{ // Changed from DataJSON to DataJson
+		Call:         groupCall,
+		Params: &tg.DataJson{
 			Data: jsonParams,
 		},
 	})
 	if err != nil {
 		c.binding.Stop(chatID)
-		return err
+		return fmt.Errorf("failed to join group call: %w", err)
 	}
 
 	// Extract connection params from response
@@ -220,9 +214,9 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 		}
 	}
 
-	// Connect NTgCalls
+	// Connect NTgCalls with params
 	if err := c.binding.Connect(chatID, resultParams, false); err != nil {
-		return err
+		return fmt.Errorf("ntgcalls connect failed: %w", err)
 	}
 
 	// Wait for connection or timeout
@@ -230,31 +224,21 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 	case err := <-waitChan:
 		return err
 	case <-time.After(20 * time.Second):
-		return fmt.Errorf("connection timeout: no response from ntgcalls")
+		return fmt.Errorf("connection timeout after 20s")
 	}
-}
-
-// handleP2PCall handles P2P (private) voice chat
-func (c *Calls) handleP2PCall(chatID int64, mediaDesc ntgcalls.MediaDescription) error {
-	// P2P call implementation (simplified)
-	// Full implementation would include DH key exchange, etc.
-	return fmt.Errorf("P2P calls not yet implemented")
 }
 
 // GetInputGroupCall gets input group call for chat
 func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
-	// For supergroups/channels (negative IDs less than -1000000000000)
+	// Supergroup/Channel: chatID < -1000000000000
 	if chatID < -1000000000000 {
-		// Extract channel ID
 		channelID := -(chatID + 1000000000000)
-		
-		// Get the channel first to get access hash
+
 		peer, err := c.client.ResolvePeer(chatID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve peer: %w", err)
 		}
 
-		// Get access hash from peer
 		var accessHash int64
 		if inputPeer, ok := peer.(*tg.InputPeerChannel); ok {
 			accessHash = inputPeer.AccessHash
@@ -262,7 +246,6 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("peer is not a channel")
 		}
 
-		// Get full channel info
 		fullChannel, err := c.client.ChannelsGetFullChannel(&tg.InputChannelObj{
 			ChannelID:  channelID,
 			AccessHash: accessHash,
@@ -271,17 +254,20 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("failed to get full channel: %w", err)
 		}
 
-		// Extract call from FullChannel - ChannelFull is the concrete type
 		if fullChan, ok := fullChannel.FullChat.(*tg.ChannelFull); ok {
 			if fullChan.Call == nil {
-				return nil, fmt.Errorf("no active group call in chat")
+				return nil, fmt.Errorf("no active voice chat in this group.\nStart a Voice Chat first from group settings.")
 			}
 			return fullChan.Call, nil
 		}
-	} else {
-		// For regular groups (negative IDs greater than -1000000000000)
+
+		return nil, fmt.Errorf("could not parse channel info")
+	}
+
+	// Regular group: chatID between -1000000000000 and 0
+	if chatID < 0 {
 		groupID := -chatID
-		
+
 		fullChat, err := c.client.MessagesGetFullChat(groupID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get full chat: %w", err)
@@ -291,19 +277,20 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("no full chat data")
 		}
 
-		// ChatFull is the concrete type, not interface
 		if chatFull, ok := fullChat.FullChat.(*tg.ChatFullObj); ok {
 			if chatFull.Call == nil {
-				return nil, fmt.Errorf("no active group call in chat")
+				return nil, fmt.Errorf("no active voice chat in this group.\nStart a Voice Chat first from group settings.")
 			}
 			return chatFull.Call, nil
 		}
+
+		return nil, fmt.Errorf("could not parse chat info")
 	}
 
-	return nil, fmt.Errorf("unsupported chat type")
+	return nil, fmt.Errorf("invalid chat ID: %d (music bot only works in groups)", chatID)
 }
 
-// Stop stops NTgCalls
+// Stop stops all active calls
 func (c *Calls) Stop() {
-	c.binding.Stop(-1) // Stop all
+	c.binding.Stop(-1)
 }
