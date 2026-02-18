@@ -146,3 +146,47 @@ func (t TEXTS) Stats() string {
 
 **🔗 Powered By:** %s`
 }
+
+// Paste these 4 functions at the end of your strings.go file (before last closing brace if any)
+
+func (t TEXTS) PlayReply() string {
+	return `╭─────────────────────╮
+│  **🎵 Audio Play**
+╰─────────────────────╯
+
+**👤 Requested By:** %s
+
+🎶 Music feature coming soon!
+
+**🔗 Powered By:** %s`
+}
+
+func (t TEXTS) VPlayReply() string {
+	return `╭─────────────────────╮
+│  **📹 Video Play**
+╰─────────────────────╯
+
+**👤 Requested By:** %s
+
+🎬 Video feature coming soon!
+
+**🔗 Powered By:** %s`
+}
+
+func (t TEXTS) QueueEmpty() string {
+	return `╭─────────────────────╮
+│  **📋 Queue**
+╰─────────────────────╯
+
+**No songs in queue!**
+Use /play to add songs.`
+}
+
+func (t TEXTS) NothingPlaying() string {
+	return `╭─────────────────────╮
+│  **🎧 Now Playing**
+╰─────────────────────╯
+
+**Nothing is playing right now!**
+Use /play to start music.`
+}
