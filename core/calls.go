@@ -136,23 +136,27 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 		return fmt.Errorf("failed to set stream sources: %w", err)
 	}
 
-	inputGroupCall, err := c.GetInputGroupCall(chatID)
+	// Get the InputGroupCall object
+	inputCall, err := c.GetInputGroupCall(chatID)
 	if err != nil {
 		c.binding.Stop(chatID)
 		return fmt.Errorf("failed to get group call: %w", err)
 	}
 
-	groupCall, ok := inputGroupCall.(tg.InputGroupCall)
-	if !ok {
+	// inputCall is *tg.InputGroupCall (pointer) - use it directly
+	groupCallPtr, ok := inputCall.(*tg.InputGroupCall)
+	if !ok || groupCallPtr == nil {
 		c.binding.Stop(chatID)
-		return fmt.Errorf("invalid group call type")
+		return fmt.Errorf("invalid group call object (type: %T)", inputCall)
 	}
+
+	log.Printf(">> Joining VC in chat %d, call AccessHash: %d", chatID, groupCallPtr.AccessHash)
 
 	resultParams := `{"transport": null}`
 	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Muted:        false,
 		VideoStopped: mediaDesc.Video == nil,
-		Call:         groupCall,
+		Call:         groupCallPtr, // Pass pointer directly
 		Params:       &tg.DataJson{Data: jsonParams},
 	})
 	if err != nil {
@@ -181,21 +185,17 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 	}
 }
 
-// GetInputGroupCall gets input group call for chat
-// Gogram returns raw peer IDs which can be:
-//   - Negative (standard Telegram format): -100XXXXXXXXX for supergroups
-//   - Positive large number: raw channel/group ID without negation
+// GetInputGroupCall gets InputGroupCall for the chat
 func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
-	// Normalize: gogram sometimes gives positive raw IDs
-	// Try resolving peer directly - works for both positive and negative IDs
 	peer, err := c.client.ResolvePeer(chatID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve peer: %w", err)
+		return nil, fmt.Errorf("failed to resolve peer (chatID: %d): %w", chatID, err)
 	}
+
+	log.Printf(">> Resolved peer type: %T for chatID: %d", peer, chatID)
 
 	switch p := peer.(type) {
 	case *tg.InputPeerChannel:
-		// Supergroup / Channel
 		fullChannel, err := c.client.ChannelsGetFullChannel(&tg.InputChannelObj{
 			ChannelID:  p.ChannelID,
 			AccessHash: p.AccessHash,
@@ -204,28 +204,33 @@ func (c *Calls) GetInputGroupCall(chatID int64) (interface{}, error) {
 			return nil, fmt.Errorf("failed to get full channel: %w", err)
 		}
 
-		if fullChan, ok := fullChannel.FullChat.(*tg.ChannelFull); ok {
-			if fullChan.Call == nil {
-				return nil, fmt.Errorf("❌ No active Voice Chat found!\nPlease start a Voice Chat from group settings first.")
-			}
-			return fullChan.Call, nil
+		fullChan, ok := fullChannel.FullChat.(*tg.ChannelFull)
+		if !ok {
+			return nil, fmt.Errorf("unexpected FullChat type: %T", fullChannel.FullChat)
 		}
-		return nil, fmt.Errorf("could not parse channel info")
+		if fullChan.Call == nil {
+			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
+		}
+
+		log.Printf(">> Found group call: ID=%d, AccessHash=%d", fullChan.Call.ID, fullChan.Call.AccessHash)
+		return fullChan.Call, nil
 
 	case *tg.InputPeerChat:
-		// Regular group
 		fullChat, err := c.client.MessagesGetFullChat(p.ChatID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get full chat: %w", err)
 		}
 
-		if chatFull, ok := fullChat.FullChat.(*tg.ChatFullObj); ok {
-			if chatFull.Call == nil {
-				return nil, fmt.Errorf("❌ No active Voice Chat found!\nPlease start a Voice Chat from group settings first.")
-			}
-			return chatFull.Call, nil
+		chatFull, ok := fullChat.FullChat.(*tg.ChatFullObj)
+		if !ok {
+			return nil, fmt.Errorf("unexpected FullChat type: %T", fullChat.FullChat)
 		}
-		return nil, fmt.Errorf("could not parse chat info")
+		if chatFull.Call == nil {
+			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
+		}
+
+		log.Printf(">> Found group call: ID=%d, AccessHash=%d", chatFull.Call.ID, chatFull.Call.AccessHash)
+		return chatFull.Call, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported peer type: %T (chatID: %d)", peer, chatID)
