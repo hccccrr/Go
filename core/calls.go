@@ -132,21 +132,22 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 		return fmt.Errorf("failed to set stream sources: %w", err)
 	}
 
-	// InputGroupCall is an interface in gogram - get it directly
-	groupCall, err := c.GetInputGroupCall(chatID)
+	// Get InputGroupCallObj (concrete struct pointer)
+	groupCallObj, err := c.GetInputGroupCall(chatID)
 	if err != nil {
 		c.binding.Stop(chatID)
 		return fmt.Errorf("failed to get group call: %w", err)
 	}
 
-	log.Printf(">> Joining VC in chat %d, call type: %T", chatID, groupCall)
+	log.Printf(">> Joining VC in chat %d, AccessHash: %d", chatID, groupCallObj.AccessHash)
 
 	resultParams := `{"transport": null}`
 	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Muted:        false,
 		VideoStopped: mediaDesc.Video == nil,
-		Call:         groupCall, // tg.InputGroupCall interface - pass as-is
-		Params:       &tg.DataJson{Data: jsonParams},
+		// Pass as the concrete struct value (not pointer, not interface)
+		Call:   groupCallObj,
+		Params: &tg.DataJson{Data: jsonParams},
 	})
 	if err != nil {
 		c.binding.Stop(chatID)
@@ -174,8 +175,8 @@ func (c *Calls) handleGroupCall(chatID int64, mediaDesc ntgcalls.MediaDescriptio
 	}
 }
 
-// GetInputGroupCall returns tg.InputGroupCall interface for the chat
-func (c *Calls) GetInputGroupCall(chatID int64) (tg.InputGroupCall, error) {
+// GetInputGroupCall returns *tg.InputGroupCallObj (concrete type)
+func (c *Calls) GetInputGroupCall(chatID int64) (*tg.InputGroupCallObj, error) {
 	peer, err := c.client.ResolvePeer(chatID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve peer (chatID: %d): %w", chatID, err)
@@ -201,8 +202,14 @@ func (c *Calls) GetInputGroupCall(chatID int64) (tg.InputGroupCall, error) {
 			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
 		}
 
-		log.Printf(">> Found group call for channel peer")
-		return fullChan.Call, nil
+		// fullChan.Call is InputGroupCall interface - assert to concrete type
+		callObj, ok := fullChan.Call.(*tg.InputGroupCallObj)
+		if !ok {
+			return nil, fmt.Errorf("unexpected Call type: %T", fullChan.Call)
+		}
+
+		log.Printf(">> Found group call: ID=%d, AccessHash=%d", callObj.ID, callObj.AccessHash)
+		return callObj, nil
 
 	case *tg.InputPeerChat:
 		fullChat, err := c.client.MessagesGetFullChat(p.ChatID)
@@ -218,8 +225,13 @@ func (c *Calls) GetInputGroupCall(chatID int64) (tg.InputGroupCall, error) {
 			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
 		}
 
-		log.Printf(">> Found group call for chat peer")
-		return chatFull.Call, nil
+		callObj, ok := chatFull.Call.(*tg.InputGroupCallObj)
+		if !ok {
+			return nil, fmt.Errorf("unexpected Call type: %T", chatFull.Call)
+		}
+
+		log.Printf(">> Found group call: ID=%d, AccessHash=%d", callObj.ID, callObj.AccessHash)
+		return callObj, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported peer type: %T (chatID: %d)", peer, chatID)
