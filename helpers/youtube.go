@@ -37,33 +37,27 @@ func NewYouTubeSearch(searchTerms string, maxResults int) (*YouTubeSearch, error
 		SearchTerms: searchTerms,
 		MaxResults:  maxResults,
 	}
-
 	if err := ys.Search(); err != nil {
 		return nil, err
 	}
-
 	return ys, nil
 }
 
 // Search performs the YouTube search
 func (ys *YouTubeSearch) Search() error {
-	// Encode search query
 	encodedSearch := url.QueryEscape(ys.SearchTerms)
-	searchURL := fmt.Sprintf("https://youtube.com/results?search_query=%s", encodedSearch)
+	searchURL := fmt.Sprintf("https://www.youtube.com/results?search_query=%s", encodedSearch)
 
-	// Fetch page
 	response, err := ys.fetchPage(searchURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch page: %w", err)
 	}
 
-	// Parse results
 	videos, err := ys.parseHTML(response)
 	if err != nil {
 		return fmt.Errorf("failed to parse results: %w", err)
 	}
 
-	// Limit results if needed
 	if ys.MaxResults > 0 && len(videos) > ys.MaxResults {
 		videos = videos[:ys.MaxResults]
 	}
@@ -72,16 +66,23 @@ func (ys *YouTubeSearch) Search() error {
 	return nil
 }
 
-// fetchPage fetches the YouTube search page
-func (ys *YouTubeSearch) fetchPage(url string) (string, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+// fetchPage fetches the YouTube search page with proper headers
+func (ys *YouTubeSearch) fetchPage(reqURL string) (string, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
 
-	// Retry until we get ytInitialData
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
-		resp, err := client.Get(url)
+		req, err := http.NewRequest("GET", reqURL, nil)
+		if err != nil {
+			return "", err
+		}
+
+		// Critical: YouTube blocks requests without proper headers
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+		resp, err := client.Do(req)
 		if err != nil {
 			if i == maxRetries-1 {
 				return "", err
@@ -109,189 +110,250 @@ func (ys *YouTubeSearch) fetchPage(url string) (string, error) {
 
 // parseHTML extracts video data from YouTube page HTML
 func (ys *YouTubeSearch) parseHTML(response string) ([]YouTubeVideo, error) {
-	var results []YouTubeVideo
+	// Method 1: Extract via ytInitialData JSON
+	videos, err := ys.parseViaJSON(response)
+	if err == nil && len(videos) > 0 {
+		return videos, nil
+	}
 
-	// Find ytInitialData
-	startMarker := "ytInitialData"
+	// Method 2: Fallback - regex on videoId directly
+	return ys.parseViaRegex(response)
+}
+
+// parseViaJSON parses YouTube search results from ytInitialData JSON
+func (ys *YouTubeSearch) parseViaJSON(response string) ([]YouTubeVideo, error) {
+	startMarker := "var ytInitialData = "
 	start := strings.Index(response, startMarker)
 	if start == -1 {
-		return nil, fmt.Errorf("ytInitialData not found in response")
+		// Try alternative marker
+		startMarker = "ytInitialData = "
+		start = strings.Index(response, startMarker)
+		if start == -1 {
+			return nil, fmt.Errorf("ytInitialData not found")
+		}
+	}
+	start += len(startMarker)
+
+	// Find the matching closing brace
+	jsonStr := extractJSON(response[start:])
+	if jsonStr == "" {
+		return nil, fmt.Errorf("could not extract JSON")
 	}
 
-	start += len(startMarker) + 3 // Skip "ytInitialData = "
-
-	// Find end of JSON ("};" pattern)
-	end := strings.Index(response[start:], "};")
-	if end == -1 {
-		return nil, fmt.Errorf("end of ytInitialData not found")
-	}
-	end = start + end + 1 // Include the closing brace
-
-	jsonStr := response[start:end]
-
-	// Parse JSON
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	// Navigate through JSON structure
-	contents, ok := data["contents"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid JSON structure: contents")
+	// Navigate JSON tree safely
+	videoRenderers := extractVideoRenderers(data)
+	if len(videoRenderers) == 0 {
+		return nil, fmt.Errorf("no video renderers found")
 	}
 
-	twoColumn, ok := contents["twoColumnSearchResultsRenderer"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid JSON structure: twoColumnSearchResultsRenderer")
-	}
-
-	primaryContents, ok := twoColumn["primaryContents"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid JSON structure: primaryContents")
-	}
-
-	sectionList, ok := primaryContents["sectionListRenderer"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid JSON structure: sectionListRenderer")
-	}
-
-	sectionContents, ok := sectionList["contents"].([]interface{})
-	if !ok || len(sectionContents) == 0 {
-		return nil, fmt.Errorf("invalid JSON structure: sectionListRenderer.contents")
-	}
-
-	itemSection, ok := sectionContents[0].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid JSON structure: itemSection")
-	}
-
-	itemSectionRenderer, ok := itemSection["itemSectionRenderer"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid JSON structure: itemSectionRenderer")
-	}
-
-	videos, ok := itemSectionRenderer["contents"].([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid JSON structure: videos")
-	}
-
-	// Extract video data
-	for _, video := range videos {
-		videoMap, ok := video.(map[string]interface{})
-		if !ok {
-			continue
+	var results []YouTubeVideo
+	for _, vr := range videoRenderers {
+		video := ys.extractVideoData(vr)
+		if video.ID != "" && video.Title != "" {
+			results = append(results, video)
 		}
-
-		videoRenderer, ok := videoMap["videoRenderer"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		videoData := ys.extractVideoData(videoRenderer)
-		results = append(results, videoData)
-		
-		// Break after first video (like Python code)
-		break
 	}
 
 	return results, nil
 }
 
-// extractVideoData extracts data from a videoRenderer object
-func (ys *YouTubeSearch) extractVideoData(videoRenderer map[string]interface{}) YouTubeVideo {
-	video := YouTubeVideo{}
+// parseViaRegex fallback using regex to extract videoIds
+func (ys *YouTubeSearch) parseViaRegex(response string) ([]YouTubeVideo, error) {
+	videoIDRegex := regexp.MustCompile(`"videoId":"([a-zA-Z0-9_-]{11})"`)
+	titleRegex := regexp.MustCompile(`"title":{"runs":\[{"text":"([^"]+)"`)
+	durationRegex := regexp.MustCompile(`"simpleText":"(\d+:\d+(?::\d+)?)"`)
 
-	// ID
-	if id, ok := videoRenderer["videoId"].(string); ok {
-		video.ID = id
+	idMatches := videoIDRegex.FindAllStringSubmatch(response, 10)
+	titleMatches := titleRegex.FindAllStringSubmatch(response, 10)
+	durationMatches := durationRegex.FindAllStringSubmatch(response, 10)
+
+	seen := map[string]bool{}
+	var results []YouTubeVideo
+
+	for i, match := range idMatches {
+		if len(match) < 2 {
+			continue
+		}
+		videoID := match[1]
+		if seen[videoID] {
+			continue
+		}
+		seen[videoID] = true
+
+		video := YouTubeVideo{
+			ID:   videoID,
+			Link: fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID),
+		}
+
+		if i < len(titleMatches) && len(titleMatches[i]) > 1 {
+			video.Title = titleMatches[i][1]
+		}
+		if i < len(durationMatches) && len(durationMatches[i]) > 1 {
+			video.Duration = durationMatches[i][1]
+		}
+
+		if video.Title != "" {
+			results = append(results, video)
+		}
 	}
 
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no results found via regex")
+	}
+
+	return results, nil
+}
+
+// extractJSON extracts a complete JSON object from string
+func extractJSON(s string) string {
+	if len(s) == 0 || s[0] != '{' {
+		return ""
+	}
+
+	depth := 0
+	inString := false
+	escaped := false
+
+	for i, ch := range s {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		if ch == '{' {
+			depth++
+		} else if ch == '}' {
+			depth--
+			if depth == 0 {
+				return s[:i+1]
+			}
+		}
+	}
+	return ""
+}
+
+// extractVideoRenderers walks JSON tree to find videoRenderer objects
+func extractVideoRenderers(data map[string]interface{}) []map[string]interface{} {
+	var renderers []map[string]interface{}
+
+	// Try standard search results path
+	try := func(path ...string) []interface{} {
+		var cur interface{} = data
+		for _, key := range path {
+			m, ok := cur.(map[string]interface{})
+			if !ok {
+				return nil
+			}
+			cur = m[key]
+		}
+		if arr, ok := cur.([]interface{}); ok {
+			return arr
+		}
+		return nil
+	}
+
+	// Path 1: standard search
+	sections := try("contents", "twoColumnSearchResultsRenderer", "primaryContents", "sectionListRenderer", "contents")
+	for _, section := range sections {
+		sMap, ok := section.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		isr, ok := sMap["itemSectionRenderer"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		contents, ok := isr["contents"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range contents {
+			iMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if vr, ok := iMap["videoRenderer"].(map[string]interface{}); ok {
+				renderers = append(renderers, vr)
+			}
+		}
+	}
+
+	return renderers
+}
+
+// extractVideoData extracts data from a videoRenderer object
+func (ys *YouTubeSearch) extractVideoData(vr map[string]interface{}) YouTubeVideo {
+	video := YouTubeVideo{}
+
+	getString := func(m map[string]interface{}, keys ...string) string {
+		var cur interface{} = m
+		for _, k := range keys {
+			switch v := cur.(type) {
+			case map[string]interface{}:
+				cur = v[k]
+			case []interface{}:
+				if len(v) > 0 {
+					cur = v[0]
+				} else {
+					return ""
+				}
+			default:
+				return ""
+			}
+		}
+		if s, ok := cur.(string); ok {
+			return s
+		}
+		return ""
+	}
+
+	video.ID = getString(vr, "videoId")
+	video.Title = getString(vr, "title", "runs", "text")
+	video.Channel = getString(vr, "longBylineText", "runs", "text")
+	video.Duration = getString(vr, "lengthText", "simpleText")
+	video.Views = getString(vr, "viewCountText", "simpleText")
+	video.PublishTime = getString(vr, "publishedTimeText", "simpleText")
+	if video.PublishTime == "" {
+		video.PublishTime = "Unknown"
+	}
+	video.URLSuffix = getString(vr, "navigationEndpoint", "commandMetadata", "webCommandMetadata", "url")
+
 	// Thumbnails
-	if thumbnail, ok := videoRenderer["thumbnail"].(map[string]interface{}); ok {
-		if thumbs, ok := thumbnail["thumbnails"].([]interface{}); ok {
-			for _, thumb := range thumbs {
-				if thumbMap, ok := thumb.(map[string]interface{}); ok {
-					if url, ok := thumbMap["url"].(string); ok {
-						video.Thumbnails = append(video.Thumbnails, url)
+	if thumb, ok := vr["thumbnail"].(map[string]interface{}); ok {
+		if thumbs, ok := thumb["thumbnails"].([]interface{}); ok {
+			for _, t := range thumbs {
+				if tMap, ok := t.(map[string]interface{}); ok {
+					if u, ok := tMap["url"].(string); ok {
+						video.Thumbnails = append(video.Thumbnails, u)
 					}
 				}
 			}
 		}
 	}
 
-	// Title
-	if title, ok := videoRenderer["title"].(map[string]interface{}); ok {
-		if runs, ok := title["runs"].([]interface{}); ok && len(runs) > 0 {
-			if run, ok := runs[0].(map[string]interface{}); ok {
-				if text, ok := run["text"].(string); ok {
-					video.Title = text
-				}
-			}
-		}
-	}
-
-	// Description
-	if desc, ok := videoRenderer["descriptionSnippet"].(map[string]interface{}); ok {
-		if runs, ok := desc["runs"].([]interface{}); ok && len(runs) > 0 {
-			if run, ok := runs[0].(map[string]interface{}); ok {
-				if text, ok := run["text"].(string); ok {
-					video.LongDesc = text
-				}
-			}
-		}
-	}
-
-	// Channel
-	if byline, ok := videoRenderer["longBylineText"].(map[string]interface{}); ok {
-		if runs, ok := byline["runs"].([]interface{}); ok && len(runs) > 0 {
-			if run, ok := runs[0].(map[string]interface{}); ok {
-				if text, ok := run["text"].(string); ok {
-					video.Channel = text
-				}
-			}
-		}
-	}
-
-	// Duration
-	if length, ok := videoRenderer["lengthText"].(map[string]interface{}); ok {
-		if simpleText, ok := length["simpleText"].(string); ok {
-			video.Duration = simpleText
-		}
-	}
-
-	// Views
-	if viewCount, ok := videoRenderer["viewCountText"].(map[string]interface{}); ok {
-		if simpleText, ok := viewCount["simpleText"].(string); ok {
-			video.Views = simpleText
-		}
-	}
-
-	// Publish time (simplified - would need pytube equivalent for exact date)
-	if publishTime, ok := videoRenderer["publishedTimeText"].(map[string]interface{}); ok {
-		if simpleText, ok := publishTime["simpleText"].(string); ok {
-			video.PublishTime = simpleText
-		}
-	}
-	if video.PublishTime == "" {
-		video.PublishTime = "Unknown"
-	}
-
-	// URL suffix
-	if nav, ok := videoRenderer["navigationEndpoint"].(map[string]interface{}); ok {
-		if cmd, ok := nav["commandMetadata"].(map[string]interface{}); ok {
-			if webCmd, ok := cmd["webCommandMetadata"].(map[string]interface{}); ok {
-				if urlSuffix, ok := webCmd["url"].(string); ok {
-					video.URLSuffix = urlSuffix
-				}
-			}
-		}
+	if video.ID != "" {
+		video.Link = fmt.Sprintf("https://www.youtube.com/watch?v=%s", video.ID)
 	}
 
 	return video
 }
 
-// ToDict returns videos as slice (clears cache if specified)
+// ToDict returns videos as slice
 func (ys *YouTubeSearch) ToDict(clearCache bool) []YouTubeVideo {
 	result := ys.Videos
 	if clearCache {
@@ -300,67 +362,17 @@ func (ys *YouTubeSearch) ToDict(clearCache bool) []YouTubeVideo {
 	return result
 }
 
-// ToJSON returns videos as JSON string (clears cache if specified)
+// ToJSON returns videos as JSON string
 func (ys *YouTubeSearch) ToJSON(clearCache bool) (string, error) {
-	data := map[string]interface{}{
-		"videos": ys.Videos,
-	}
-
+	data := map[string]interface{}{"videos": ys.Videos}
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
 		return "", err
 	}
-
 	if clearCache {
 		ys.Videos = nil
 	}
-
 	return string(jsonBytes), nil
-}
-
-// GetVideoURL returns full YouTube URL for a video
-func (ys *YouTubeSearch) GetVideoURL(videoID string) string {
-	return fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
-}
-
-// FormatDuration converts YouTube duration format to human readable
-func FormatDuration(duration string) string {
-	// Already formatted by YouTube (e.g., "3:45" or "1:23:45")
-	return duration
-}
-
-// FormatViews converts view count to readable format
-func FormatViews(views string) string {
-	// Remove "views" text and clean up
-	views = strings.TrimSpace(views)
-	views = strings.Replace(views, " views", "", -1)
-	views = strings.Replace(views, " view", "", -1)
-	return views
-}
-
-// ExtractVideoID extracts video ID from YouTube URL
-func ExtractVideoID(urlStr string) string {
-	// Pattern: https://www.youtube.com/watch?v=VIDEO_ID
-	// or youtu.be/VIDEO_ID
-	patterns := []string{
-		`(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})`,
-		`youtube\.com/embed/([a-zA-Z0-9_-]{11})`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindStringSubmatch(urlStr)
-		if len(matches) > 1 {
-			return matches[1]
-		}
-	}
-
-	// If already just the ID
-	if len(urlStr) == 11 {
-		return urlStr
-	}
-
-	return ""
 }
 
 // SearchYouTube is a convenience function to search YouTube
@@ -370,4 +382,31 @@ func SearchYouTube(query string, maxResults int) ([]YouTubeVideo, error) {
 		return nil, err
 	}
 	return ys.Videos, nil
+}
+
+// FormatViews cleans up view count string
+func FormatViews(views string) string {
+	views = strings.TrimSpace(views)
+	views = strings.ReplaceAll(views, " views", "")
+	views = strings.ReplaceAll(views, " view", "")
+	return views
+}
+
+// ExtractVideoID extracts video ID from YouTube URL
+func ExtractVideoID(urlStr string) string {
+	patterns := []string{
+		`(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})`,
+		`youtube\.com/embed/([a-zA-Z0-9_-]{11})`,
+	}
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(urlStr)
+		if len(matches) > 1 {
+			return matches[1]
+		}
+	}
+	if len(urlStr) == 11 {
+		return urlStr
+	}
+	return ""
 }
