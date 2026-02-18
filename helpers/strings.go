@@ -147,30 +147,20 @@ func (t TEXTS) Stats() string {
 **🔗 Powered By:** %s`
 }
 
-// Paste these 4 functions at the end of your strings.go file (before last closing brace if any)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Paste these functions at the END of your helpers/strings.go file
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-func (t TEXTS) PlayReply() string {
+func (t TEXTS) Playing() string {
 	return `╭─────────────────────╮
-│  **🎵 Audio Play**
+│  **🎧 Now Playing**
 ╰─────────────────────╯
 
-**👤 Requested By:** %s
+**🔗 Stream:** %s
 
-🎶 Music feature coming soon!
-
-**🔗 Powered By:** %s`
-}
-
-func (t TEXTS) VPlayReply() string {
-	return `╭─────────────────────╮
-│  **📹 Video Play**
-╰─────────────────────╯
-
-**👤 Requested By:** %s
-
-🎬 Video feature coming soon!
-
-**🔗 Powered By:** %s`
+**📝 Song:** ` + "`%s`" + `
+**⏱️ Duration:** ` + "`%s`" + `
+**👤 Requested By:** %s`
 }
 
 func (t TEXTS) QueueEmpty() string {
@@ -189,4 +179,24 @@ func (t TEXTS) NothingPlaying() string {
 
 **Nothing is playing right now!**
 Use /play to start music.`
+}
+
+func (t TEXTS) PlayReply() string {
+	return `╭─────────────────────╮
+│  **🎵 Audio Play**
+╰─────────────────────╯
+
+**👤 Requested By:** %s
+
+**🔗 Powered By:** %s`
+}
+
+func (t TEXTS) VPlayReply() string {
+	return `╭─────────────────────╮
+│  **📹 Video Play**
+╰─────────────────────╯
+
+**👤 Requested By:** %s
+
+**🔗 Powered By:** %s`
 }
