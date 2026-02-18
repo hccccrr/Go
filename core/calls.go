@@ -155,7 +155,7 @@ func (c *Calls) LeaveVC(chatID int64) error {
 	// Leave Telegram group call
 	groupCall, err := c.GetInputGroupCall(chatID)
 	if err == nil {
-		c.client.PhoneLeaveGroupCall(groupCall, 0)
+		c.client.PhoneLeaveGroupCall(tg.InputGroupCall(groupCall), 0)
 	}
 
 	return c.binding.Stop(chatID)
