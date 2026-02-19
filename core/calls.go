@@ -152,7 +152,7 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 			Input:         filePath,
 			SampleRate:    48000,
 			BitsPerSample: 16,
-			ChannelCount:  2,
+			ChannelCount:  1,
 		},
 	}
 	if video {
