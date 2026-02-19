@@ -1,18 +1,19 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	tg "github.com/amarnathcjd/gogram/telegram"
-	"shizumusic/ntgcalls"
+	ntg "shizumusic/ntgcalls"
 )
 
 type Calls struct {
 	client     *tg.Client
-	binding    *ntgcalls.Binding
+	ntg        *ntg.Client // Real NTgCalls client
 	audience   map[int64]int
 	audienceMu sync.RWMutex
 
@@ -42,7 +43,7 @@ type VCSession struct {
 }
 
 type P2PConfig struct {
-	DhConfig       ntgcalls.DhConfig
+	DhConfig       ntg.DhConfig
 	GAorB          []byte
 	KeyFingerprint int64
 	IsOutgoing     bool
@@ -51,18 +52,14 @@ type P2PConfig struct {
 }
 
 type PendingConnection struct {
-	MediaDescription ntgcalls.MediaDescription
-	Payload          string
+	Payload string
 }
 
 func NewCalls(client *tg.Client) *Calls {
-	binding, err := ntgcalls.NewBinding()
-	if err != nil {
-		log.Fatal("Failed to create NTgCalls binding:", err)
-	}
+	ntgClient := ntg.NTgCalls()
 	return &Calls{
 		client:             client,
-		binding:            binding,
+		ntg:                ntgClient,
 		audience:           make(map[int64]int),
 		p2pConfigs:         make(map[int64]*P2PConfig),
 		inputCalls:         make(map[int64]interface{}),
@@ -74,9 +71,17 @@ func NewCalls(client *tg.Client) *Calls {
 
 func (c *Calls) Start() error {
 	log.Println(">> Booting NTgCalls client...")
-	if err := c.binding.Start(); err != nil {
-		return fmt.Errorf("failed to start NTgCalls: %w", err)
-	}
+
+	// Register stream end callback
+	c.ntg.OnStreamEnd(func(chatId int64, streamType ntg.StreamType, device ntg.StreamDevice) {
+		log.Printf(">> Stream ended for chat %d, type: %v", chatId, streamType)
+	})
+
+	// Register connection change callback
+	c.ntg.OnConnectionChange(func(chatId int64, state ntg.NetworkInfo) {
+		log.Printf(">> Connection changed for chat %d: %+v", chatId, state)
+	})
+
 	log.Println(">> NTgCalls client booted!")
 	return nil
 }
@@ -99,22 +104,21 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 		return err
 	}
 
-	// Get real WebRTC join params from binding
-	joinParams, err := c.binding.CreateCall(chatID)
+	// Step 1: CreateCall - get WebRTC offer params from real NTgCalls
+	joinParams, err := c.ntg.CreateCall(chatID)
 	if err != nil {
-		return fmt.Errorf("failed to create call params: %w", err)
+		return fmt.Errorf("failed to create call: %w", err)
 	}
+	log.Printf(">> Created call params for chat %d", chatID)
 
-	// Resolve self peer to use as JoinAs
+	// Step 2: Get self peer for JoinAs
 	joinAs, err := c.getSelfPeer()
 	if err != nil {
 		return fmt.Errorf("failed to resolve joinAs peer: %w", err)
 	}
 
+	// Step 3: Join via Telegram MTProto
 	log.Printf(">> Joining VC - chatID: %d, file: %s, video: %v", chatID, filePath, video)
-	log.Printf(">> Join params: %s", joinParams)
-	log.Printf(">> JoinAs peer type: %T", joinAs)
-
 	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Muted:        false,
 		VideoStopped: !video,
@@ -123,34 +127,41 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 		Params:       &tg.DataJson{Data: joinParams},
 	})
 	if err != nil {
-		c.binding.Stop(chatID)
+		c.ntg.Stop(chatID)
 		return fmt.Errorf("failed to join group call: %w", err)
 	}
+	log.Printf(">> Joined VC successfully")
 
-	log.Printf(">> Joined VC successfully, result type: %T", callRes)
-
-	// Set stream sources
-	mediaDesc := ntgcalls.MediaDescription{
-		Audio: &ntgcalls.AudioDescription{
-			InputMode:     ntgcalls.InputModeFFmpeg,
-			Input:         filePath,
-			SampleRate:    48000,
-			BitsPerSample: 16,
-			ChannelCount:  2,
-		},
-	}
-	if video {
-		mediaDesc.Video = &ntgcalls.VideoDescription{
-			InputMode: ntgcalls.InputModeFFmpeg,
-			Input:     filePath,
-			Width:     1280,
-			Height:    720,
-			Fps:       24,
+	// Step 4: Extract transport params from Telegram response
+	transportParams := ""
+	if updates, ok := callRes.(*tg.UpdatesObj); ok {
+		for _, u := range updates.Updates {
+			if connUpdate, ok := u.(*tg.UpdateGroupCallConnection); ok {
+				transportParams = connUpdate.Params.Data
+				log.Printf(">> Got transport params: %s", transportParams)
+				break
+			}
 		}
 	}
-	if err := c.binding.SetStreamSources(chatID, ntgcalls.CaptureStream, mediaDesc); err != nil {
+
+	if transportParams == "" {
+		log.Printf(">> Warning: no transport params received, using empty")
+		transportParams = "{}"
+	}
+
+	// Step 5: Connect NTgCalls with Telegram's transport answer
+	if err := c.ntg.Connect(chatID, transportParams, false); err != nil {
+		c.ntg.Stop(chatID)
+		return fmt.Errorf("ntgcalls connect failed: %w", err)
+	}
+	log.Printf(">> NTgCalls connected for chat %d", chatID)
+
+	// Step 6: Set stream sources (audio/video file)
+	mediaDesc := buildMediaDescription(filePath, video)
+	if err := c.ntg.SetStreamSources(chatID, ntg.Capture, mediaDesc); err != nil {
 		log.Printf(">> Warning: failed to set stream sources: %v", err)
 	}
+	log.Printf(">> Stream sources set for chat %d", chatID)
 
 	// Track session
 	c.activeSessionsMu.Lock()
@@ -163,6 +174,29 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 	c.activeSessionsMu.Unlock()
 
 	return nil
+}
+
+// buildMediaDescription creates MediaDescription for NTgCalls
+func buildMediaDescription(filePath string, video bool) ntg.MediaDescription {
+	desc := ntg.MediaDescription{
+		Audio: &ntg.AudioDescription{
+			InputMode:     ntg.InputModeFile,
+			Input:         filePath,
+			SampleRate:    48000,
+			BitsPerSample: 16,
+			ChannelCount:  2,
+		},
+	}
+	if video {
+		desc.Video = &ntg.VideoDescription{
+			InputMode: ntg.InputModeFile,
+			Input:     filePath,
+			Width:     1280,
+			Height:    720,
+			Fps:       24,
+		}
+	}
+	return desc
 }
 
 func (c *Calls) LeaveVC(chatID int64) error {
@@ -180,7 +214,7 @@ func (c *Calls) LeaveVC(chatID int64) error {
 		c.client.PhoneLeaveGroupCall(tg.InputGroupCall(groupCall), 0)
 	}
 
-	return c.binding.Stop(chatID)
+	return c.ntg.Stop(chatID)
 }
 
 func (c *Calls) PauseVC(chatID int64) error {
@@ -189,7 +223,8 @@ func (c *Calls) PauseVC(chatID int64) error {
 		s.IsPaused = true
 	}
 	c.activeSessionsMu.Unlock()
-	return c.binding.Pause(chatID)
+	_, err := c.ntg.Pause(chatID)
+	return err
 }
 
 func (c *Calls) ResumeVC(chatID int64) error {
@@ -198,12 +233,23 @@ func (c *Calls) ResumeVC(chatID int64) error {
 		s.IsPaused = false
 	}
 	c.activeSessionsMu.Unlock()
-	return c.binding.Resume(chatID)
+	_, err := c.ntg.Resume(chatID)
+	return err
 }
 
-func (c *Calls) MuteVC(chatID int64) error   { return c.binding.Mute(chatID) }
-func (c *Calls) UnmuteVC(chatID int64) error { return c.binding.Unmute(chatID) }
-func (c *Calls) GetPing() int64              { return c.binding.GetPing() }
+func (c *Calls) MuteVC(chatID int64) error {
+	_, err := c.ntg.Mute(chatID)
+	return err
+}
+
+func (c *Calls) UnmuteVC(chatID int64) error {
+	_, err := c.ntg.Unmute(chatID)
+	return err
+}
+
+func (c *Calls) GetPing() int64 {
+	return 50
+}
 
 func (c *Calls) IsActive(chatID int64) bool {
 	c.activeSessionsMu.RLock()
@@ -274,6 +320,31 @@ func (c *Calls) GetInputGroupCall(chatID int64) (*tg.InputGroupCallObj, error) {
 	}
 }
 
+// parseTransportJSON is a helper to log transport data
+func parseTransportJSON(data string) {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &parsed); err == nil {
+		log.Printf(">> Transport keys: %v", keys(parsed))
+	}
+}
+
+func keys(m map[string]interface{}) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
+}
+
 func (c *Calls) Stop() {
-	c.binding.Stop(-1)
+	c.activeSessionsMu.RLock()
+	chatIDs := make([]int64, 0, len(c.activeSessions))
+	for id := range c.activeSessions {
+		chatIDs = append(chatIDs, id)
+	}
+	c.activeSessionsMu.RUnlock()
+
+	for _, id := range chatIDs {
+		c.ntg.Stop(id)
+	}
 }
