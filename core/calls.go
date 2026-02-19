@@ -149,8 +149,11 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 	mediaDesc := ntg.MediaDescription{
 		Audio: &ntg.AudioDescription{
 			InputMode:     ntg.InputModeFile,
-			Input:         filePath,
-			SampleRate:    48000,
+			Input: fmt.Sprintf(
+			"ffmpeg -i %s -f s16le -ac 1 -ar 48000 pipe:1",
+			filePath,
+			),
+		    SampleRate:    48000,
 			BitsPerSample: 16,
 			ChannelCount:  1,
 		},
