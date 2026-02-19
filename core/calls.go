@@ -11,22 +11,8 @@ import (
 )
 
 type Calls struct {
-	client     *tg.Client
-	ntg        *ntg.Client
-	audience   map[int64]int
-	audienceMu sync.RWMutex
-
-	p2pConfigs      map[int64]*P2PConfig
-	p2pConfigsMutex sync.RWMutex
-
-	inputCalls      map[int64]interface{}
-	inputCallsMutex sync.RWMutex
-
-	waitConnect      map[int64]chan error
-	waitConnectMutex sync.Mutex
-
-	pendingConnections      map[int64]*PendingConnection
-	pendingConnectionsMutex sync.Mutex
+	client *tg.Client
+	ntg    *ntg.Client
 
 	activeSessions   map[int64]*VCSession
 	activeSessionsMu sync.RWMutex
@@ -36,34 +22,14 @@ type VCSession struct {
 	ChatID    int64
 	FilePath  string
 	IsVideo   bool
-	IsPaused  bool
-	IsMuted   bool
 	StartTime time.Time
-}
-
-type P2PConfig struct {
-	DhConfig       ntg.DhConfig
-	GAorB          []byte
-	KeyFingerprint int64
-	IsOutgoing     bool
-	PhoneCall      *tg.PhoneCallObj
-	WaitData       chan error
-}
-
-type PendingConnection struct {
-	Payload string
 }
 
 func NewCalls(client *tg.Client) *Calls {
 	return &Calls{
-		client:             client,
-		ntg:                ntg.NTgCalls(),
-		audience:           make(map[int64]int),
-		p2pConfigs:         make(map[int64]*P2PConfig),
-		inputCalls:         make(map[int64]interface{}),
-		waitConnect:        make(map[int64]chan error),
-		pendingConnections: make(map[int64]*PendingConnection),
-		activeSessions:     make(map[int64]*VCSession),
+		client:         client,
+		ntg:            ntg.NTgCalls(),
+		activeSessions: make(map[int64]*VCSession),
 	}
 }
 
@@ -72,10 +38,7 @@ func (c *Calls) Start() error {
 
 	c.ntg.OnStreamEnd(func(chatId int64, streamType ntg.StreamType, device ntg.StreamDevice) {
 		log.Printf(">> Stream ended for chat %d", chatId)
-	})
-
-	c.ntg.OnConnectionChange(func(chatId int64, state ntg.NetworkInfo) {
-		log.Printf(">> Connection changed for chat %d: %s", chatId, state.Status)
+		c.LeaveVC(chatId)
 	})
 
 	log.Println(">> NTgCalls client booted!")
@@ -85,82 +48,78 @@ func (c *Calls) Start() error {
 func (c *Calls) getSelfPeer() (tg.InputPeer, error) {
 	me, err := c.client.GetMe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get self: %w", err)
+		return nil, err
 	}
-	peer, err := c.client.ResolvePeer(me.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve self peer: %w", err)
-	}
-	return peer, nil
+	return c.client.ResolvePeer(me.ID)
 }
 
 func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
+
 	groupCall, err := c.GetInputGroupCall(chatID)
 	if err != nil {
 		return err
 	}
 
-	// Step 1: Get WebRTC offer from NTgCalls
-	joinParams, err := c.ntg.CreateCall(chatID)
+	// 1️⃣ Create WebRTC offer
+	offer, err := c.ntg.CreateCall(chatID)
 	if err != nil {
-		return fmt.Errorf("failed to create call: %w", err)
+		return err
 	}
 
-	// Step 2: Get self peer
 	joinAs, err := c.getSelfPeer()
 	if err != nil {
-		return fmt.Errorf("failed to resolve joinAs: %w", err)
+		return err
 	}
 
-	log.Printf(">> Joining VC - chatID: %d, file: %s, video: %v", chatID, filePath, video)
+	log.Printf(">> Joining VC - chatID: %d, file: %s", chatID, filePath)
 
-	// Step 3: Join via Telegram
-	callRes, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
-		Muted:        false,
-		VideoStopped: !video,
+	// 2️⃣ Join Telegram group call
+	result, err := c.client.PhoneJoinGroupCall(&tg.PhoneJoinGroupCallParams{
 		Call:         groupCall,
 		JoinAs:       joinAs,
-		Params:       &tg.DataJson{Data: joinParams},
+		Muted:        false,
+		VideoStopped: !video,
+		Params:       &tg.DataJson{Data: offer},
 	})
 	if err != nil {
 		c.ntg.Stop(chatID)
-		return fmt.Errorf("failed to join group call: %w", err)
+		return err
 	}
-	log.Printf(">> Joined VC, result: %T", callRes)
 
-	// Step 4: Extract transport params
-	transportParams := "{}"
-	if updates, ok := callRes.(*tg.UpdatesObj); ok {
-		for _, u := range updates.Updates {
-			if connUpdate, ok := u.(*tg.UpdateGroupCallConnection); ok {
-				transportParams = connUpdate.Params.Data
-				log.Printf(">> Got transport params")
+	// 3️⃣ Extract transport params
+	var answer string
+	if updates, ok := result.(*tg.UpdatesObj); ok {
+		for _, upd := range updates.Updates {
+			if conn, ok := upd.(*tg.UpdateGroupCallConnection); ok {
+				answer = conn.Params.Data
 				break
 			}
 		}
 	}
 
-	// Step 5: Connect NTgCalls with Telegram's answer
-	if err := c.ntg.Connect(chatID, transportParams, false); err != nil {
-		log.Printf(">> Warning: connect failed: %v", err)
+	if answer == "" {
+		return fmt.Errorf("transport params missing")
 	}
 
-	// Step 6: Start streaming
-	mediaDesc := ntg.MediaDescription{
+	// 4️⃣ Connect NTgCalls
+	if err := c.ntg.Connect(chatID, answer, false); err != nil {
+		return err
+	}
+
+	// 5️⃣ Start streaming (REAL FIX)
+	media := ntg.MediaDescription{
 		Audio: &ntg.AudioDescription{
-			InputMode:     ntg.InputModeFile,
-			Input: fmt.Sprintf(
-			"ffmpeg -i %s -f s16le -ac 1 -ar 48000 pipe:1",
-			filePath,
-			),
-		    SampleRate:    48000,
+			InputMode:     ntg.InputModeFFmpeg,
+			Input:         filePath,
+			SampleRate:    48000,
 			BitsPerSample: 16,
-			ChannelCount:  1,
+			ChannelCount:  2,
 		},
 	}
+
 	if video {
-		mediaDesc.Video = &ntg.VideoDescription{
-			InputMode: ntg.InputModeFile,
+		media.Video = &ntg.VideoDescription{
+			InputMode: ntg.InputModeFFmpeg,
 			Input:     filePath,
 			Width:     1280,
 			Height:    720,
@@ -168,8 +127,8 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 		}
 	}
 
-	if err := c.ntg.SetStreamSources(chatID, ntg.Capture, mediaDesc); err != nil {
-		log.Printf(">> Warning: set stream sources failed: %v", err)
+	if err := c.ntg.SetStreamSources(chatID, ntg.CaptureStream, media); err != nil {
+		return err
 	}
 
 	// Track session
@@ -182,13 +141,12 @@ func (c *Calls) JoinVC(chatID int64, filePath string, video bool) error {
 	}
 	c.activeSessionsMu.Unlock()
 
+	log.Println(">> Streaming started successfully")
+
 	return nil
 }
 
 func (c *Calls) LeaveVC(chatID int64) error {
-	c.audienceMu.Lock()
-	delete(c.audience, chatID)
-	c.audienceMu.Unlock()
 
 	c.activeSessionsMu.Lock()
 	delete(c.activeSessions, chatID)
@@ -203,21 +161,11 @@ func (c *Calls) LeaveVC(chatID int64) error {
 }
 
 func (c *Calls) PauseVC(chatID int64) error {
-	c.activeSessionsMu.Lock()
-	if s, ok := c.activeSessions[chatID]; ok {
-		s.IsPaused = true
-	}
-	c.activeSessionsMu.Unlock()
 	_, err := c.ntg.Pause(chatID)
 	return err
 }
 
 func (c *Calls) ResumeVC(chatID int64) error {
-	c.activeSessionsMu.Lock()
-	if s, ok := c.activeSessions[chatID]; ok {
-		s.IsPaused = false
-	}
-	c.activeSessionsMu.Unlock()
 	_, err := c.ntg.Resume(chatID)
 	return err
 }
@@ -232,8 +180,6 @@ func (c *Calls) UnmuteVC(chatID int64) error {
 	return err
 }
 
-func (c *Calls) GetPing() int64 { return 50 }
-
 func (c *Calls) IsActive(chatID int64) bool {
 	c.activeSessionsMu.RLock()
 	defer c.activeSessionsMu.RUnlock()
@@ -241,69 +187,11 @@ func (c *Calls) IsActive(chatID int64) bool {
 	return ok
 }
 
-func (c *Calls) GetInputGroupCall(chatID int64) (*tg.InputGroupCallObj, error) {
-	peer, err := c.client.ResolvePeer(chatID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve peer (chatID: %d): %w", chatID, err)
-	}
-
-	log.Printf(">> Resolved peer type: %T for chatID: %d", peer, chatID)
-
-	switch p := peer.(type) {
-	case *tg.InputPeerChannel:
-		fullChannel, err := c.client.ChannelsGetFullChannel(&tg.InputChannelObj{
-			ChannelID:  p.ChannelID,
-			AccessHash: p.AccessHash,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get full channel: %w", err)
-		}
-		fullChan, ok := fullChannel.FullChat.(*tg.ChannelFull)
-		if !ok {
-			return nil, fmt.Errorf("unexpected FullChat type: %T", fullChannel.FullChat)
-		}
-		if fullChan.Call == nil {
-			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
-		}
-		callObj, ok := fullChan.Call.(*tg.InputGroupCallObj)
-		if !ok {
-			return nil, fmt.Errorf("unexpected Call type: %T", fullChan.Call)
-		}
-		log.Printf(">> Found group call: ID=%d", callObj.ID)
-		return callObj, nil
-
-	case *tg.InputPeerChat:
-		fullChat, err := c.client.MessagesGetFullChat(p.ChatID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get full chat: %w", err)
-		}
-		chatFull, ok := fullChat.FullChat.(*tg.ChatFullObj)
-		if !ok {
-			return nil, fmt.Errorf("unexpected FullChat type: %T", fullChat.FullChat)
-		}
-		if chatFull.Call == nil {
-			return nil, fmt.Errorf("❌ No active Voice Chat!\nStart a Voice Chat from group settings first.")
-		}
-		callObj, ok := chatFull.Call.(*tg.InputGroupCallObj)
-		if !ok {
-			return nil, fmt.Errorf("unexpected Call type: %T", chatFull.Call)
-		}
-		log.Printf(">> Found group call: ID=%d", callObj.ID)
-		return callObj, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported peer type: %T (chatID: %d)", peer, chatID)
-	}
-}
-
 func (c *Calls) Stop() {
 	c.activeSessionsMu.RLock()
-	ids := make([]int64, 0, len(c.activeSessions))
+	defer c.activeSessionsMu.RUnlock()
+
 	for id := range c.activeSessions {
-		ids = append(ids, id)
-	}
-	c.activeSessionsMu.RUnlock()
-	for _, id := range ids {
 		c.ntg.Stop(id)
 	}
 }
